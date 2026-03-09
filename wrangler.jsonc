@@ -7,10 +7,10 @@
 	"name": "gram",
 	"main": "src/index.ts",
 	"compatibility_date": "2025-09-27",
-	"assets": {
-		"binding": "ASSETS",
-		"directory": "./public"
-	},
+	// "assets": {
+	// 	"binding": "ASSETS",
+	// 	"directory": "./public"
+	// },
 	"observability": {
 		"enabled": true
 	},
