@@ -16,6 +16,17 @@
 	},
 	"compatibility_flags": [
 		"nodejs_compat"
+	],
+	"vars": {
+		"DEFAULT_MODEL": "gemini-2.5-flash",
+		"ALLOWED_MODELS": "gemini-2.5-flash,gemini-2.5-pro"
+	},
+	"d1_databases": [
+		{
+			"binding": "DB",
+			"database_name": "gram",
+			"database_id": "84bdd5af-474e-4275-bc0e-d04fd8645c35"
+		}
 	]
 	/**
 	 * Smart Placement
