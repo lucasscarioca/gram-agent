@@ -1,5 +1,6 @@
 {
 	"name": "gram",
+	"description": "Minimal starter for personal Telegram agents on Cloudflare Workers",
 	"type": "module",
 	"scripts": {
 		"dev": "wrangler dev",
@@ -19,5 +20,33 @@
 		"typescript": "^5.9.3",
 		"vitest": "^4.0.18",
 		"wrangler": "^4.71.0"
+	},
+	"cloudflare": {
+		"label": "gram-agent",
+		"products": [
+			"Workers",
+			"D1"
+		],
+		"categories": [
+			"starter"
+		],
+		"publish": true,
+		"bindings": {
+			"TELEGRAM_BOT_TOKEN": {
+				"description": "Telegram bot token from BotFather."
+			},
+			"TELEGRAM_WEBHOOK_SECRET": {
+				"description": "Random secret used in both the webhook path and Telegram secret header. Example: openssl rand -hex 32"
+			},
+			"ALLOWED_TELEGRAM_USER_ID": {
+				"description": "Your numeric Telegram user ID. The bot will ignore all other users."
+			},
+			"ALLOWED_CHAT_ID": {
+				"description": "Your private Telegram chat ID with the bot. In a 1:1 chat this is often the same as your user ID."
+			},
+			"GOOGLE_GENERATIVE_AI_API_KEY": {
+				"description": "Google Generative AI API key used by the AI SDK provider."
+			}
+		}
 	}
 }
