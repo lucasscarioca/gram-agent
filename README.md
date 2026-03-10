@@ -6,6 +6,16 @@ Minimal starter for building personal, Telegram-first agents on Cloudflare Worke
 
 This project is intentionally small. It is a private-bot starter, not a SaaS product and not a full agent framework.
 
+## Versioning
+
+This template uses lightweight `0.x` releases.
+
+- `main` keeps moving
+- tags/releases mark stable starter milestones
+- breaking changes are acceptable while the project is still in `0.x`
+
+If you build your own bot from this template, create your own repo and treat the tagged releases as safe starting points.
+
 ## What this gives you
 
 - Telegram webhook bot on Cloudflare Workers
@@ -201,3 +211,4 @@ The Telegram/session architecture is provider-agnostic enough to swap later.
 
 - `wrangler.jsonc` intentionally uses a placeholder D1 database ID in git.
 - Future versions can add more built-in features, but the goal is to keep this starter lightweight.
+- See [CHANGELOG.md](./CHANGELOG.md) for tagged starter milestones.
