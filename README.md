@@ -199,6 +199,5 @@ The Telegram/session architecture is provider-agnostic enough to swap later.
 
 ## Notes
 
-- [docs/poc-design.md](./docs/poc-design.md) contains the original POC design notes.
 - `wrangler.jsonc` intentionally uses a placeholder D1 database ID in git.
 - Future versions can add more built-in features, but the goal is to keep this starter lightweight.
