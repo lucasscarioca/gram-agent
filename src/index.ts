@@ -11,6 +11,7 @@ import {
 import { estimateCostUsd, getModelSpec, getModelSpecs } from "./llm/catalog";
 import { LlmRegistry } from "./llm/registry";
 import { TelegramClient } from "./telegram/client";
+import { renderTelegramHtml } from "./telegram/format";
 import { buildModelKeyboard, buildReplyControls, buildSessionKeyboard } from "./telegram/render";
 import type {
   EnvBindings,
@@ -23,7 +24,7 @@ import type {
 
 const MAX_USER_MESSAGE_LENGTH = 4000;
 const SYSTEM_PROMPT =
-  "You are gram, a concise personal Telegram-first assistant. Be helpful, direct, and conversational.";
+  "You are gram, a concise personal Telegram-first assistant. Be helpful, direct, and conversational. Format replies for Telegram with short paragraphs, flat lists, inline code, and fenced code blocks. Avoid tables.";
 
 const app = new Hono<{ Bindings: EnvBindings }>();
 
@@ -204,7 +205,7 @@ async function handleMessage(input: {
       model: modelSpec.id,
     });
 
-    const sent = await telegram.sendMessage(message.chat.id, response.text, {
+    const sent = await telegram.sendMessage(message.chat.id, renderTelegramHtml(response.text), {
       replyToMessageId: message.message_id,
       inlineKeyboard: buildReplyControls(),
     });

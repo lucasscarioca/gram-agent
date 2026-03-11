@@ -1,5 +1,13 @@
 # Changelog
 
+## Unreleased
+
+Adds:
+
+- Telegram-safe HTML rendering for assistant replies
+- minimal system prompt guidance for Telegram-friendly formatting
+- tests for Telegram formatting behavior
+
 ## v0.2.0
 
 Adds:

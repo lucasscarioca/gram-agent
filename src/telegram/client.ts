@@ -32,6 +32,7 @@ export class TelegramClient {
     const response = await this.call<TelegramMessage>("sendMessage", {
       chat_id: chatId,
       text,
+      parse_mode: "HTML",
       reply_to_message_id: options.replyToMessageId,
       reply_markup: options.inlineKeyboard
         ? { inline_keyboard: options.inlineKeyboard }
