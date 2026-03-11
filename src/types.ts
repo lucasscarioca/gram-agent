@@ -25,9 +25,19 @@ export interface SessionRow {
   chat_id: number;
   user_id: number;
   title: string;
+  title_source: "default" | "first_message" | "auto" | "manual";
+  title_updated_at: string;
+  last_auto_title_message_count: number;
   selected_model: string;
   created_at: string;
   last_message_at: string;
+}
+
+export interface PendingChatActionRow {
+  chat_id: number;
+  action: "rename_session";
+  session_id: string;
+  created_at: string;
 }
 
 export interface MessageRow {

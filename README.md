@@ -31,6 +31,9 @@ Built-in commands:
 - `/new`
 - `/list`
 - `/model`
+- `/rename`
+- `/delete`
+- `/cancel`
 - `/status`
 - `/analytics`
 
@@ -50,7 +53,7 @@ The point is to keep the interface Telegram-native:
 - chat is the primary UX
 - sessions are explicit
 - Telegram's command menu is the default control surface
-- inline keyboards appear only for session and model selection
+- inline keyboards appear for session and model selection, including session management actions
 
 ## Security and cost
 

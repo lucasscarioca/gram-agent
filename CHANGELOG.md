@@ -4,6 +4,9 @@
 
 Adds:
 
+- session rename and delete flows via Telegram commands and inline session management actions
+- D1-backed pending session rename state for Telegram callback-to-message flows
+- date-prefixed session titles with first-message naming and manual-title precedence metadata
 - Telegram-safe HTML rendering for assistant replies
 - minimal system prompt guidance for Telegram-friendly formatting
 - tests for Telegram formatting behavior

@@ -1,10 +1,24 @@
-const COMMANDS = new Set(["help", "new", "list", "model", "status", "analytics"]);
+const COMMANDS = new Set(["help", "new", "list", "model", "rename", "delete", "cancel", "status", "analytics"]);
 
-export type SupportedCommand = "help" | "new" | "list" | "model" | "status" | "analytics";
+export type SupportedCommand =
+  | "help"
+  | "new"
+  | "list"
+  | "model"
+  | "rename"
+  | "delete"
+  | "cancel"
+  | "status"
+  | "analytics";
 
 export type CallbackAction =
-  | { kind: "command"; command: Exclude<SupportedCommand, "help" | "status" | "analytics"> }
-  | { kind: "session"; sessionId: string }
+  | { kind: "command"; command: Exclude<SupportedCommand, "help" | "rename" | "delete" | "cancel" | "status" | "analytics"> }
+  | { kind: "session_manage"; sessionId: string }
+  | { kind: "session_use"; sessionId: string }
+  | { kind: "session_rename"; sessionId: string }
+  | { kind: "session_delete"; sessionId: string }
+  | { kind: "session_delete_confirm"; sessionId: string }
+  | { kind: "session_delete_cancel"; sessionId: string }
   | { kind: "model"; modelId: string };
 
 export function parseCommand(text: string): SupportedCommand | null {
@@ -37,9 +51,34 @@ export function parseCallbackAction(data: string | undefined): CallbackAction | 
     return null;
   }
 
+  if (data.startsWith("session_delete_confirm:")) {
+    const sessionId = data.slice("session_delete_confirm:".length);
+    return sessionId ? { kind: "session_delete_confirm", sessionId } : null;
+  }
+
+  if (data.startsWith("session_delete_cancel:")) {
+    const sessionId = data.slice("session_delete_cancel:".length);
+    return sessionId ? { kind: "session_delete_cancel", sessionId } : null;
+  }
+
+  if (data.startsWith("session_delete:")) {
+    const sessionId = data.slice("session_delete:".length);
+    return sessionId ? { kind: "session_delete", sessionId } : null;
+  }
+
+  if (data.startsWith("session_rename:")) {
+    const sessionId = data.slice("session_rename:".length);
+    return sessionId ? { kind: "session_rename", sessionId } : null;
+  }
+
+  if (data.startsWith("session_use:")) {
+    const sessionId = data.slice("session_use:".length);
+    return sessionId ? { kind: "session_use", sessionId } : null;
+  }
+
   if (data.startsWith("session:")) {
     const sessionId = data.slice("session:".length);
-    return sessionId ? { kind: "session", sessionId } : null;
+    return sessionId ? { kind: "session_manage", sessionId } : null;
   }
 
   if (data.startsWith("model:")) {
@@ -51,11 +90,10 @@ export function parseCallbackAction(data: string | undefined): CallbackAction | 
 }
 
 export function createSessionTitle(now: Date): string {
-  const iso = now.toISOString().replace("T", " ");
-  return `Session ${iso.slice(0, 16)}`;
+  return `${formatSessionDate(now)} · New session`;
 }
 
-export function deriveSessionTitle(text: string, maxLength = 60): string {
+export function deriveSessionTitle(text: string, maxLength = 80): string {
   const normalized = text.replace(/\s+/g, " ").trim();
 
   if (normalized.length <= maxLength) {
@@ -63,4 +101,34 @@ export function deriveSessionTitle(text: string, maxLength = 60): string {
   }
 
   return `${normalized.slice(0, maxLength - 3).trimEnd()}...`;
+}
+
+export function createFirstMessageSessionTitle(createdAt: string | Date, text: string, maxLength = 80): string {
+  const date = createdAt instanceof Date ? createdAt : new Date(createdAt);
+  const prefix = `${formatSessionDate(date)} · `;
+  const content = deriveSessionTitle(text, Math.max(1, maxLength - prefix.length));
+  return `${prefix}${content}`;
+}
+
+export function normalizeManualSessionTitle(text: string, maxLength = 80): string {
+  return deriveSessionTitle(text, maxLength);
+}
+
+export function getCommandArgument(text: string): string {
+  const normalized = text.trim();
+  const firstSpaceIndex = normalized.search(/\s/);
+
+  if (firstSpaceIndex === -1) {
+    return "";
+  }
+
+  return normalized.slice(firstSpaceIndex).trim();
+}
+
+function formatSessionDate(date: Date): string {
+  return new Intl.DateTimeFormat("en-US", {
+    month: "short",
+    day: "numeric",
+    timeZone: "UTC",
+  }).format(date);
 }

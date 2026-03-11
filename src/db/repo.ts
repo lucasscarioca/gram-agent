@@ -1,4 +1,12 @@
-import type { ChatRow, GroupedUsageRow, MessageRow, RunRow, SessionRow, UsageTotalsRow } from "../types";
+import type {
+  ChatRow,
+  GroupedUsageRow,
+  MessageRow,
+  PendingChatActionRow,
+  RunRow,
+  SessionRow,
+  UsageTotalsRow,
+} from "../types";
 
 export class Repo {
   constructor(private readonly db: D1Database) {}
@@ -37,7 +45,17 @@ export class Repo {
     const row = await this.db
       .prepare(
         `
-          SELECT id, chat_id, user_id, title, selected_model, created_at, last_message_at
+          SELECT
+            id,
+            chat_id,
+            user_id,
+            title,
+            title_source,
+            title_updated_at,
+            last_auto_title_message_count,
+            selected_model,
+            created_at,
+            last_message_at
           FROM sessions
           WHERE id = ?
         `,
@@ -53,14 +71,26 @@ export class Repo {
     chatId: number;
     userId: number;
     title: string;
+    titleSource: SessionRow["title_source"];
     selectedModel: string;
     now: string;
   }): Promise<SessionRow> {
     await this.db
       .prepare(
         `
-          INSERT INTO sessions (id, chat_id, user_id, title, selected_model, created_at, last_message_at)
-          VALUES (?, ?, ?, ?, ?, ?, ?)
+          INSERT INTO sessions (
+            id,
+            chat_id,
+            user_id,
+            title,
+            title_source,
+            title_updated_at,
+            last_auto_title_message_count,
+            selected_model,
+            created_at,
+            last_message_at
+          )
+          VALUES (?, ?, ?, ?, ?, ?, 0, ?, ?, ?)
         `,
       )
       .bind(
@@ -68,6 +98,8 @@ export class Repo {
         input.chatId,
         input.userId,
         input.title,
+        input.titleSource,
+        input.now,
         input.selectedModel,
         input.now,
         input.now,
@@ -81,6 +113,9 @@ export class Repo {
       chat_id: input.chatId,
       user_id: input.userId,
       title: input.title,
+      title_source: input.titleSource,
+      title_updated_at: input.now,
+      last_auto_title_message_count: 0,
       selected_model: input.selectedModel,
       created_at: input.now,
       last_message_at: input.now,
@@ -104,7 +139,17 @@ export class Repo {
     const row = await this.db
       .prepare(
         `
-          SELECT s.id, s.chat_id, s.user_id, s.title, s.selected_model, s.created_at, s.last_message_at
+          SELECT
+            s.id,
+            s.chat_id,
+            s.user_id,
+            s.title,
+            s.title_source,
+            s.title_updated_at,
+            s.last_auto_title_message_count,
+            s.selected_model,
+            s.created_at,
+            s.last_message_at
           FROM chats c
           JOIN sessions s ON s.id = c.active_session_id
           WHERE c.chat_id = ?
@@ -120,7 +165,17 @@ export class Repo {
     const result = await this.db
       .prepare(
         `
-          SELECT id, chat_id, user_id, title, selected_model, created_at, last_message_at
+          SELECT
+            id,
+            chat_id,
+            user_id,
+            title,
+            title_source,
+            title_updated_at,
+            last_auto_title_message_count,
+            selected_model,
+            created_at,
+            last_message_at
           FROM sessions
           WHERE chat_id = ?
           ORDER BY last_message_at DESC, created_at DESC
@@ -146,16 +201,72 @@ export class Repo {
       .run();
   }
 
-  async updateSessionTitle(sessionId: string, title: string): Promise<void> {
+  async updateSessionTitle(input: {
+    sessionId: string;
+    title: string;
+    titleSource: SessionRow["title_source"];
+    titleUpdatedAt: string;
+    lastAutoTitleMessageCount?: number;
+  }): Promise<void> {
+    const autoCount = input.lastAutoTitleMessageCount ?? 0;
+
     await this.db
       .prepare(
         `
           UPDATE sessions
-          SET title = ?
+          SET title = ?,
+              title_source = ?,
+              title_updated_at = ?,
+              last_auto_title_message_count = ?
           WHERE id = ?
         `,
       )
-      .bind(title, sessionId)
+      .bind(input.title, input.titleSource, input.titleUpdatedAt, autoCount, input.sessionId)
+      .run();
+  }
+
+  async getMostRecentSession(chatId: number): Promise<SessionRow | null> {
+    const row = await this.db
+      .prepare(
+        `
+          SELECT
+            id,
+            chat_id,
+            user_id,
+            title,
+            title_source,
+            title_updated_at,
+            last_auto_title_message_count,
+            selected_model,
+            created_at,
+            last_message_at
+          FROM sessions
+          WHERE chat_id = ?
+          ORDER BY last_message_at DESC, created_at DESC
+          LIMIT 1
+        `,
+      )
+      .bind(chatId)
+      .first<SessionRow>();
+
+    return row ?? null;
+  }
+
+  async deleteSession(sessionId: string, chatId: number): Promise<void> {
+    await this.db.prepare(`DELETE FROM messages WHERE session_id = ?`).bind(sessionId).run();
+    await this.db.prepare(`DELETE FROM runs WHERE session_id = ?`).bind(sessionId).run();
+    await this.db.prepare(`DELETE FROM pending_chat_actions WHERE session_id = ?`).bind(sessionId).run();
+    await this.db.prepare(`DELETE FROM sessions WHERE id = ? AND chat_id = ?`).bind(sessionId, chatId).run();
+    await this.db
+      .prepare(
+        `
+          UPDATE chats
+          SET active_session_id = NULL
+          WHERE chat_id = ?
+            AND active_session_id = ?
+        `,
+      )
+      .bind(chatId, sessionId)
       .run();
   }
 
@@ -222,6 +333,46 @@ export class Repo {
       .all<MessageRow>();
 
     return (result.results ?? []).reverse();
+  }
+
+  async getPendingChatAction(chatId: number): Promise<PendingChatActionRow | null> {
+    const row = await this.db
+      .prepare(
+        `
+          SELECT chat_id, action, session_id, created_at
+          FROM pending_chat_actions
+          WHERE chat_id = ?
+        `,
+      )
+      .bind(chatId)
+      .first<PendingChatActionRow>();
+
+    return row ?? null;
+  }
+
+  async setPendingChatAction(input: {
+    chatId: number;
+    action: PendingChatActionRow["action"];
+    sessionId: string;
+    now: string;
+  }): Promise<void> {
+    await this.db
+      .prepare(
+        `
+          INSERT INTO pending_chat_actions (chat_id, action, session_id, created_at)
+          VALUES (?, ?, ?, ?)
+          ON CONFLICT(chat_id) DO UPDATE SET
+            action = excluded.action,
+            session_id = excluded.session_id,
+            created_at = excluded.created_at
+        `,
+      )
+      .bind(input.chatId, input.action, input.sessionId, input.now)
+      .run();
+  }
+
+  async clearPendingChatAction(chatId: number): Promise<void> {
+    await this.db.prepare(`DELETE FROM pending_chat_actions WHERE chat_id = ?`).bind(chatId).run();
   }
 
   async createRun(input: {

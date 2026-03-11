@@ -3,8 +3,10 @@ import { Hono } from "hono";
 import { getConfig } from "./config";
 import { Repo } from "./db/repo";
 import {
+  createFirstMessageSessionTitle,
   createSessionTitle,
-  deriveSessionTitle,
+  getCommandArgument,
+  normalizeManualSessionTitle,
   parseCallbackAction,
   parseCommand,
 } from "./domain/protocol";
@@ -12,7 +14,12 @@ import { estimateCostUsd, getModelSpec, getModelSpecs } from "./llm/catalog";
 import { LlmRegistry } from "./llm/registry";
 import { TelegramClient, type TelegramCommand } from "./telegram/client";
 import { renderTelegramHtml } from "./telegram/format";
-import { buildModelKeyboard, buildSessionKeyboard } from "./telegram/render";
+import {
+  buildModelKeyboard,
+  buildSessionDeleteKeyboard,
+  buildSessionKeyboard,
+  buildSessionManageKeyboard,
+} from "./telegram/render";
 import type {
   EnvBindings,
   GroupedUsageRow,
@@ -30,6 +37,9 @@ const TELEGRAM_COMMANDS: TelegramCommand[] = [
   { command: "new", description: "Start a new session" },
   { command: "list", description: "List recent sessions" },
   { command: "model", description: "Change active model" },
+  { command: "rename", description: "Rename the active session" },
+  { command: "delete", description: "Delete the active session" },
+  { command: "cancel", description: "Cancel pending session action" },
   { command: "status", description: "Show usage snapshot" },
   { command: "analytics", description: "Show usage totals" },
 ];
@@ -126,6 +136,7 @@ async function handleMessage(input: {
     await repo.ensureChat(message.chat.id, userId, now());
     await handleCommand({
       command,
+      commandText: message.text ?? "",
       chatId: message.chat.id,
       userId,
       replyToMessageId: message.message_id,
@@ -155,6 +166,35 @@ async function handleMessage(input: {
   }
 
   await repo.ensureChat(message.chat.id, userId, now());
+  const pendingAction = await repo.getPendingChatAction(message.chat.id);
+
+  if (pendingAction?.action === "rename_session") {
+    const pendingSession = await repo.getSession(pendingAction.session_id);
+
+    if (!pendingSession || pendingSession.chat_id !== message.chat.id) {
+      await repo.clearPendingChatAction(message.chat.id);
+      await telegram.sendMessage(message.chat.id, "Session rename target no longer exists.", {
+        replyToMessageId: message.message_id,
+      });
+      return;
+    }
+
+    const title = normalizeManualSessionTitle(message.text);
+
+    await repo.updateSessionTitle({
+      sessionId: pendingSession.id,
+      title,
+      titleSource: "manual",
+      titleUpdatedAt: now(),
+      lastAutoTitleMessageCount: pendingSession.last_auto_title_message_count,
+    });
+    await repo.clearPendingChatAction(message.chat.id);
+    await telegram.sendMessage(message.chat.id, renderTelegramHtml(`Session renamed: ${title}`), {
+      replyToMessageId: message.message_id,
+    });
+    return;
+  }
+
   const session = await getOrCreateActiveSession({
     repo,
     chatId: message.chat.id,
@@ -184,7 +224,13 @@ async function handleMessage(input: {
   });
 
   if (messageCount === 0) {
-    await repo.updateSessionTitle(session.id, deriveSessionTitle(message.text));
+    await repo.updateSessionTitle({
+      sessionId: session.id,
+      title: createFirstMessageSessionTitle(session.created_at, message.text),
+      titleSource: "first_message",
+      titleUpdatedAt: userMessageNow,
+      lastAutoTitleMessageCount: session.last_auto_title_message_count,
+    });
   }
 
   const run = await repo.createRun({
@@ -251,6 +297,7 @@ async function handleMessage(input: {
 
 async function handleCommand(input: {
   command: ReturnType<typeof parseCommand>;
+  commandText: string;
   chatId: number;
   userId: number;
   replyToMessageId: number;
@@ -258,7 +305,7 @@ async function handleCommand(input: {
   repo: Repo;
   telegram: TelegramClient;
 }): Promise<void> {
-  const { command, chatId, userId, replyToMessageId, config, repo, telegram } = input;
+  const { command, commandText, chatId, userId, replyToMessageId, config, repo, telegram } = input;
 
   if (!command) {
     return;
@@ -272,6 +319,9 @@ async function handleCommand(input: {
         "/new start a new session",
         "/list list recent sessions",
         "/model change the active model",
+        "/rename <title> rename the active session",
+        "/delete delete the active session",
+        "/cancel cancel rename flow",
         "/status show current usage snapshot",
         "/analytics show usage totals",
       ].join("\n"),
@@ -288,6 +338,7 @@ async function handleCommand(input: {
       chatId,
       userId,
       title: createSessionTitle(new Date()),
+      titleSource: "default",
       selectedModel: config.defaultModel,
       now: now(),
     });
@@ -316,6 +367,77 @@ async function handleCommand(input: {
     return;
   }
 
+  if (command === "rename") {
+    const session = await getOrCreateActiveSession({
+      repo,
+      chatId,
+      userId,
+      defaultModel: config.defaultModel,
+    });
+    const titleArg = getCommandArgument(commandText);
+
+    if (!titleArg) {
+      await repo.setPendingChatAction({
+        chatId,
+        action: "rename_session",
+        sessionId: session.id,
+        now: now(),
+      });
+      await telegram.sendMessage(chatId, "Send the new session name. /cancel to abort.", {
+        replyToMessageId,
+      });
+      return;
+    }
+
+    const title = normalizeManualSessionTitle(titleArg);
+    await repo.updateSessionTitle({
+      sessionId: session.id,
+      title,
+      titleSource: "manual",
+      titleUpdatedAt: now(),
+      lastAutoTitleMessageCount: session.last_auto_title_message_count,
+    });
+    await repo.clearPendingChatAction(chatId);
+    await telegram.sendMessage(chatId, renderTelegramHtml(`Session renamed: ${title}`), {
+      replyToMessageId,
+    });
+    return;
+  }
+
+  if (command === "delete") {
+    const session = await repo.getActiveSession(chatId);
+
+    if (!session) {
+      await telegram.sendMessage(chatId, "No active session to delete.", {
+        replyToMessageId,
+      });
+      return;
+    }
+
+    await telegram.sendMessage(chatId, renderTelegramHtml(buildDeletePrompt(session.title)), {
+      replyToMessageId,
+      inlineKeyboard: buildSessionDeleteKeyboard(session.id),
+    });
+    return;
+  }
+
+  if (command === "cancel") {
+    const pendingAction = await repo.getPendingChatAction(chatId);
+
+    if (!pendingAction) {
+      await telegram.sendMessage(chatId, "Nothing to cancel.", {
+        replyToMessageId,
+      });
+      return;
+    }
+
+    await repo.clearPendingChatAction(chatId);
+    await telegram.sendMessage(chatId, "Canceled pending session action.", {
+      replyToMessageId,
+    });
+    return;
+  }
+
   if (command === "model") {
     const session = await getOrCreateActiveSession({
       repo,
@@ -337,11 +459,13 @@ async function handleCommand(input: {
 
     await telegram.sendMessage(
       chatId,
-      formatStatusMessage({
-        activeSession,
-        sessionTotals: activeSession ? await repo.getSessionUsageTotals(activeSession.id) : emptyTotals(),
-        globalTotals,
-      }),
+      renderTelegramHtml(
+        formatStatusMessage({
+          activeSession,
+          sessionTotals: activeSession ? await repo.getSessionUsageTotals(activeSession.id) : emptyTotals(),
+          globalTotals,
+        }),
+      ),
       {
         replyToMessageId,
       },
@@ -394,6 +518,7 @@ async function handleCallback(input: {
     await clearPickerKeyboard(telegram, message.chat.id, message.message_id);
     await handleCommand({
       command: action.command,
+      commandText: `/${action.command}`,
       chatId: message.chat.id,
       userId: callback.from.id,
       replyToMessageId: message.message_id,
@@ -404,7 +529,25 @@ async function handleCallback(input: {
     return;
   }
 
-  if (action.kind === "session") {
+  if (action.kind === "session_manage") {
+    const session = await repo.getSession(action.sessionId);
+
+    if (!session || session.chat_id !== message.chat.id) {
+      await telegram.answerCallbackQuery(callback.id, "Session not found");
+      return;
+    }
+
+    const chat = await repo.getChat(message.chat.id);
+    await telegram.answerCallbackQuery(callback.id);
+    await clearPickerKeyboard(telegram, message.chat.id, message.message_id);
+    await telegram.sendMessage(message.chat.id, renderTelegramHtml(formatSessionManageMessage(session)), {
+      replyToMessageId: message.message_id,
+      inlineKeyboard: buildSessionManageKeyboard(session.id, chat?.active_session_id === session.id),
+    });
+    return;
+  }
+
+  if (action.kind === "session_use") {
     const session = await repo.getSession(action.sessionId);
 
     if (!session || session.chat_id !== message.chat.id) {
@@ -417,7 +560,83 @@ async function handleCallback(input: {
     await clearPickerKeyboard(telegram, message.chat.id, message.message_id);
     await telegram.sendMessage(
       message.chat.id,
-      `Active session: ${session.title}\nModel: ${session.selected_model}`,
+      renderTelegramHtml(`Active session: ${session.title}\nModel: ${session.selected_model}`),
+      {
+        replyToMessageId: message.message_id,
+      },
+    );
+    return;
+  }
+
+  if (action.kind === "session_rename") {
+    const session = await repo.getSession(action.sessionId);
+
+    if (!session || session.chat_id !== message.chat.id) {
+      await telegram.answerCallbackQuery(callback.id, "Session not found");
+      return;
+    }
+
+    await repo.setPendingChatAction({
+      chatId: message.chat.id,
+      action: "rename_session",
+      sessionId: session.id,
+      now: now(),
+    });
+    await telegram.answerCallbackQuery(callback.id, "Rename pending");
+    await clearPickerKeyboard(telegram, message.chat.id, message.message_id);
+    await telegram.sendMessage(message.chat.id, "Send the new session name. /cancel to abort.", {
+      replyToMessageId: message.message_id,
+    });
+    return;
+  }
+
+  if (action.kind === "session_delete") {
+    const session = await repo.getSession(action.sessionId);
+
+    if (!session || session.chat_id !== message.chat.id) {
+      await telegram.answerCallbackQuery(callback.id, "Session not found");
+      return;
+    }
+
+    await telegram.answerCallbackQuery(callback.id);
+    await clearPickerKeyboard(telegram, message.chat.id, message.message_id);
+    await telegram.sendMessage(message.chat.id, renderTelegramHtml(buildDeletePrompt(session.title)), {
+      replyToMessageId: message.message_id,
+      inlineKeyboard: buildSessionDeleteKeyboard(session.id),
+    });
+    return;
+  }
+
+  if (action.kind === "session_delete_cancel") {
+    await telegram.answerCallbackQuery(callback.id, "Delete canceled");
+    await clearPickerKeyboard(telegram, message.chat.id, message.message_id);
+    return;
+  }
+
+  if (action.kind === "session_delete_confirm") {
+    const session = await repo.getSession(action.sessionId);
+
+    if (!session || session.chat_id !== message.chat.id) {
+      await telegram.answerCallbackQuery(callback.id, "Session not found");
+      return;
+    }
+
+    await repo.deleteSession(session.id, message.chat.id);
+    const replacement = await repo.getMostRecentSession(message.chat.id);
+
+    if (replacement) {
+      await repo.setActiveSession(message.chat.id, replacement.id, now());
+    }
+
+    await telegram.answerCallbackQuery(callback.id, "Session deleted");
+    await clearPickerKeyboard(telegram, message.chat.id, message.message_id);
+    await telegram.sendMessage(
+      message.chat.id,
+      renderTelegramHtml(
+        replacement
+          ? `Deleted session: ${session.title}\nActive session: ${replacement.title}`
+          : `Deleted session: ${session.title}\nNo active session.`,
+      ),
       {
         replyToMessageId: message.message_id,
       },
@@ -486,9 +705,22 @@ async function getOrCreateActiveSession(input: {
     chatId: input.chatId,
     userId: input.userId,
     title: createSessionTitle(new Date()),
+    titleSource: "default",
     selectedModel: input.defaultModel,
     now: now(),
   });
+}
+
+function formatSessionManageMessage(session: SessionRow): string {
+  return [
+    `Session: ${session.title}`,
+    `Created: ${formatSessionCreatedAt(session.created_at)}`,
+    `Model: ${session.selected_model}`,
+  ].join("\n");
+}
+
+function buildDeletePrompt(title: string): string {
+  return `Delete session "${title}"?\nThis removes its messages and runs.`;
 }
 
 async function buildAnalyticsMessage(repo: Repo): Promise<string> {
@@ -599,6 +831,15 @@ function startOfUtcDay(reference = new Date()): string {
 
 function subtractDays(days: number, reference = new Date()): string {
   return new Date(reference.getTime() - days * 24 * 60 * 60 * 1000).toISOString();
+}
+
+function formatSessionCreatedAt(value: string): string {
+  return new Intl.DateTimeFormat("en-US", {
+    month: "short",
+    day: "numeric",
+    year: "numeric",
+    timeZone: "UTC",
+  }).format(new Date(value));
 }
 
 function now(): string {

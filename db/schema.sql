@@ -11,6 +11,9 @@ CREATE TABLE IF NOT EXISTS sessions (
   chat_id INTEGER NOT NULL,
   user_id INTEGER NOT NULL,
   title TEXT NOT NULL,
+  title_source TEXT NOT NULL,
+  title_updated_at TEXT NOT NULL,
+  last_auto_title_message_count INTEGER NOT NULL DEFAULT 0,
   selected_model TEXT NOT NULL,
   created_at TEXT NOT NULL,
   last_message_at TEXT NOT NULL
@@ -49,3 +52,10 @@ CREATE TABLE IF NOT EXISTS runs (
 
 CREATE INDEX IF NOT EXISTS runs_status_created_idx
   ON runs (status, created_at DESC);
+
+CREATE TABLE IF NOT EXISTS pending_chat_actions (
+  chat_id INTEGER PRIMARY KEY,
+  action TEXT NOT NULL CHECK (action IN ('rename_session')),
+  session_id TEXT NOT NULL,
+  created_at TEXT NOT NULL
+);
