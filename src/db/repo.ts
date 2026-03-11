@@ -1,4 +1,4 @@
-import type { ChatRow, MessageRow, RunRow, SessionRow } from "../types";
+import type { ChatRow, GroupedUsageRow, MessageRow, RunRow, SessionRow, UsageTotalsRow } from "../types";
 
 export class Repo {
   constructor(private readonly db: D1Database) {}
@@ -235,8 +235,21 @@ export class Repo {
     await this.db
       .prepare(
         `
-          INSERT INTO runs (id, session_id, update_id, provider, model, status, error, input_tokens, output_tokens, created_at)
-          VALUES (?, ?, ?, ?, ?, 'started', NULL, NULL, NULL, ?)
+          INSERT INTO runs (
+            id,
+            session_id,
+            update_id,
+            provider,
+            model,
+            status,
+            error,
+            input_tokens,
+            cached_input_tokens,
+            output_tokens,
+            estimated_cost_usd,
+            created_at
+          )
+          VALUES (?, ?, ?, ?, ?, 'started', NULL, NULL, NULL, NULL, NULL, ?)
         `,
       )
       .bind(input.id, input.sessionId, input.updateId, input.provider, input.model, input.now)
@@ -251,7 +264,9 @@ export class Repo {
       status: "started",
       error: null,
       input_tokens: null,
+      cached_input_tokens: null,
       output_tokens: null,
+      estimated_cost_usd: null,
       created_at: input.now,
     };
   }
@@ -259,7 +274,9 @@ export class Repo {
   async completeRun(input: {
     id: string;
     inputTokens?: number;
+    cachedInputTokens?: number;
     outputTokens?: number;
+    estimatedCostUsd?: number | null;
   }): Promise<void> {
     await this.db
       .prepare(
@@ -267,11 +284,19 @@ export class Repo {
           UPDATE runs
           SET status = 'completed',
               input_tokens = ?,
-              output_tokens = ?
+              cached_input_tokens = ?,
+              output_tokens = ?,
+              estimated_cost_usd = ?
           WHERE id = ?
         `,
       )
-      .bind(input.inputTokens ?? null, input.outputTokens ?? null, input.id)
+      .bind(
+        input.inputTokens ?? null,
+        input.cachedInputTokens ?? null,
+        input.outputTokens ?? null,
+        input.estimatedCostUsd ?? null,
+        input.id,
+      )
       .run();
   }
 
@@ -286,5 +311,113 @@ export class Repo {
       )
       .bind(error, id)
       .run();
+  }
+
+  async getSessionUsageTotals(sessionId: string): Promise<UsageTotalsRow> {
+    return this.getUsageTotals({
+      whereClause: "session_id = ? AND status = 'completed'",
+      bindings: [sessionId],
+    });
+  }
+
+  async getGlobalUsageTotals(): Promise<UsageTotalsRow> {
+    return this.getUsageTotals({
+      whereClause: "status = 'completed'",
+      bindings: [],
+    });
+  }
+
+  async getUsageTotalsSince(since: string): Promise<UsageTotalsRow> {
+    return this.getUsageTotals({
+      whereClause: "status = 'completed' AND created_at >= ?",
+      bindings: [since],
+    });
+  }
+
+  async getTopProviders(input: { since?: string; limit?: number }): Promise<GroupedUsageRow[]> {
+    return this.getGroupedUsage({
+      column: "provider",
+      since: input.since,
+      limit: input.limit ?? 3,
+    });
+  }
+
+  async getTopModels(input: { since?: string; limit?: number }): Promise<GroupedUsageRow[]> {
+    return this.getGroupedUsage({
+      column: "provider || ':' || model",
+      since: input.since,
+      limit: input.limit ?? 5,
+    });
+  }
+
+  private async getUsageTotals(input: {
+    whereClause: string;
+    bindings: unknown[];
+  }): Promise<UsageTotalsRow> {
+    const row = await this.db
+      .prepare(
+        `
+          SELECT
+            COUNT(*) AS run_count,
+            COALESCE(SUM(input_tokens), 0) AS input_tokens,
+            COALESCE(SUM(cached_input_tokens), 0) AS cached_input_tokens,
+            COALESCE(SUM(output_tokens), 0) AS output_tokens,
+            COALESCE(SUM(estimated_cost_usd), 0) AS estimated_cost_usd
+          FROM runs
+          WHERE ${input.whereClause}
+        `,
+      )
+      .bind(...input.bindings)
+      .first<UsageTotalsRow>();
+
+    return {
+      run_count: Number(row?.run_count ?? 0),
+      input_tokens: Number(row?.input_tokens ?? 0),
+      cached_input_tokens: Number(row?.cached_input_tokens ?? 0),
+      output_tokens: Number(row?.output_tokens ?? 0),
+      estimated_cost_usd: Number(row?.estimated_cost_usd ?? 0),
+    };
+  }
+
+  private async getGroupedUsage(input: {
+    column: string;
+    since?: string;
+    limit: number;
+  }): Promise<GroupedUsageRow[]> {
+    const whereClause = input.since
+      ? "status = 'completed' AND created_at >= ?"
+      : "status = 'completed'";
+    const bindings = input.since ? [input.since, input.limit] : [input.limit];
+    const result = await this.db
+      .prepare(
+        `
+          SELECT
+            ${input.column} AS key,
+            COUNT(*) AS run_count,
+            COALESCE(SUM(input_tokens), 0) AS input_tokens,
+            COALESCE(SUM(cached_input_tokens), 0) AS cached_input_tokens,
+            COALESCE(SUM(output_tokens), 0) AS output_tokens,
+            COALESCE(SUM(estimated_cost_usd), 0) AS estimated_cost_usd
+          FROM runs
+          WHERE ${whereClause}
+          GROUP BY key
+          ORDER BY
+            COALESCE(SUM(estimated_cost_usd), 0) DESC,
+            (COALESCE(SUM(input_tokens), 0) + COALESCE(SUM(output_tokens), 0)) DESC,
+            key ASC
+          LIMIT ?
+        `,
+      )
+      .bind(...bindings)
+      .all<GroupedUsageRow>();
+
+    return (result.results ?? []).map((row) => ({
+      key: row.key,
+      run_count: Number(row.run_count ?? 0),
+      input_tokens: Number(row.input_tokens ?? 0),
+      cached_input_tokens: Number(row.cached_input_tokens ?? 0),
+      output_tokens: Number(row.output_tokens ?? 0),
+      estimated_cost_usd: Number(row.estimated_cost_usd ?? 0),
+    }));
   }
 }

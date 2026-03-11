@@ -1,5 +1,17 @@
 # Changelog
 
+## v0.2.0
+
+Adds:
+
+- built-in multi-provider support for Google, OpenAI, Anthropic, and OpenRouter
+- qualified model ids in `provider:model` format
+- built-in analytics commands: `/status` and `/analytics`
+- per-run input, cached input, output, and estimated cost tracking
+- D1 migration workflow with `db/migrations/`
+- explicit fresh setup vs upgrade scripts for D1
+- deploy-button-friendly secret example file
+
 ## v0.1.0
 
 Initial public starter release.

@@ -1,13 +1,17 @@
-import { createGoogleGenerativeAI } from "@ai-sdk/google";
+import { createOpenAICompatible } from "@ai-sdk/openai-compatible";
 import { generateText } from "ai";
 
 import type { LlmProvider } from "./provider";
 
-export class GoogleLlmProvider implements LlmProvider {
-  private readonly google;
+export class OpenRouterLlmProvider implements LlmProvider {
+  private readonly openrouter;
 
   constructor(apiKey: string) {
-    this.google = createGoogleGenerativeAI({ apiKey });
+    this.openrouter = createOpenAICompatible({
+      name: "openrouter",
+      baseURL: "https://openrouter.ai/api/v1",
+      apiKey,
+    });
   }
 
   async respond(input: {
@@ -23,21 +27,19 @@ export class GoogleLlmProvider implements LlmProvider {
       cachedInputTokens?: number;
     };
   }> {
-    const messages = [
-      ...input.history.map((item) => ({
-        role: item.role,
-        content: item.content,
-      })),
-      {
-        role: "user" as const,
-        content: input.message,
-      },
-    ];
-
     const result = await generateText({
-      model: this.google(input.model),
+      model: this.openrouter(input.model),
       system: input.system,
-      messages,
+      messages: [
+        ...input.history.map((item) => ({
+          role: item.role,
+          content: item.content,
+        })),
+        {
+          role: "user" as const,
+          content: input.message,
+        },
+      ],
     });
 
     return {

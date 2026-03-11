@@ -3,6 +3,12 @@ export interface LlmHistoryItem {
   content: string;
 }
 
+export interface LlmUsage {
+  inputTokens?: number;
+  outputTokens?: number;
+  cachedInputTokens?: number;
+}
+
 export interface LlmProvider {
   respond(input: {
     system: string;
@@ -11,9 +17,6 @@ export interface LlmProvider {
     model: string;
   }): Promise<{
     text: string;
-    usage?: {
-      inputTokens?: number;
-      outputTokens?: number;
-    };
+    usage?: LlmUsage;
   }>;
 }

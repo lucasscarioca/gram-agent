@@ -4,13 +4,20 @@
 	"type": "module",
 	"scripts": {
 		"dev": "wrangler dev",
-		"deploy": "wrangler deploy --minify",
+		"deploy": "wrangler d1 migrations apply DB --remote && wrangler deploy --minify",
 		"cf-typegen": "wrangler types --env-interface CloudflareBindings",
+		"db:setup:local": "wrangler d1 execute DB --local --file=db/schema.sql",
+		"db:setup:remote": "wrangler d1 execute DB --remote --file=db/schema.sql",
+		"db:migrate:local": "wrangler d1 migrations apply DB --local",
+		"db:migrate:remote": "wrangler d1 migrations apply DB --remote",
 		"typecheck": "tsc --noEmit",
 		"test": "vitest run"
 	},
 	"dependencies": {
+		"@ai-sdk/anthropic": "^3.0.58",
 		"@ai-sdk/google": "^3.0.43",
+		"@ai-sdk/openai": "^3.0.41",
+		"@ai-sdk/openai-compatible": "^2.0.35",
 		"ai": "^6.0.116",
 		"hono": "^4.12.5",
 		"zod": "^4.3.6"
@@ -46,6 +53,15 @@
 			},
 			"GOOGLE_GENERATIVE_AI_API_KEY": {
 				"description": "Google Generative AI API key used by the AI SDK provider."
+			},
+			"OPENAI_API_KEY": {
+				"description": "OpenAI API key used for built-in GPT-5 series support."
+			},
+			"ANTHROPIC_API_KEY": {
+				"description": "Anthropic API key used for built-in Claude support."
+			},
+			"OPENROUTER_API_KEY": {
+				"description": "OpenRouter API key used for curated OpenRouter model support."
 			}
 		}
 	}

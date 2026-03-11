@@ -1,13 +1,13 @@
-import { createGoogleGenerativeAI } from "@ai-sdk/google";
+import { createAnthropic } from "@ai-sdk/anthropic";
 import { generateText } from "ai";
 
 import type { LlmProvider } from "./provider";
 
-export class GoogleLlmProvider implements LlmProvider {
-  private readonly google;
+export class AnthropicLlmProvider implements LlmProvider {
+  private readonly anthropic;
 
   constructor(apiKey: string) {
-    this.google = createGoogleGenerativeAI({ apiKey });
+    this.anthropic = createAnthropic({ apiKey });
   }
 
   async respond(input: {
@@ -23,21 +23,19 @@ export class GoogleLlmProvider implements LlmProvider {
       cachedInputTokens?: number;
     };
   }> {
-    const messages = [
-      ...input.history.map((item) => ({
-        role: item.role,
-        content: item.content,
-      })),
-      {
-        role: "user" as const,
-        content: input.message,
-      },
-    ];
-
     const result = await generateText({
-      model: this.google(input.model),
+      model: this.anthropic(input.model),
       system: input.system,
-      messages,
+      messages: [
+        ...input.history.map((item) => ({
+          role: item.role,
+          content: item.content,
+        })),
+        {
+          role: "user" as const,
+          content: input.message,
+        },
+      ],
     });
 
     return {

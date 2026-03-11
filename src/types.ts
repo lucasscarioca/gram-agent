@@ -4,7 +4,10 @@ export interface EnvBindings {
   TELEGRAM_WEBHOOK_SECRET: string;
   ALLOWED_TELEGRAM_USER_ID: string;
   ALLOWED_CHAT_ID?: string;
-  GOOGLE_GENERATIVE_AI_API_KEY: string;
+  GOOGLE_GENERATIVE_AI_API_KEY?: string;
+  OPENAI_API_KEY?: string;
+  ANTHROPIC_API_KEY?: string;
+  OPENROUTER_API_KEY?: string;
   DEFAULT_MODEL?: string;
   ALLOWED_MODELS?: string;
 }
@@ -46,8 +49,27 @@ export interface RunRow {
   status: "started" | "completed" | "failed";
   error: string | null;
   input_tokens: number | null;
+  cached_input_tokens: number | null;
   output_tokens: number | null;
+  estimated_cost_usd: number | null;
   created_at: string;
+}
+
+export interface UsageTotalsRow {
+  run_count: number;
+  input_tokens: number;
+  cached_input_tokens: number;
+  output_tokens: number;
+  estimated_cost_usd: number;
+}
+
+export interface GroupedUsageRow {
+  key: string;
+  run_count: number;
+  input_tokens: number;
+  cached_input_tokens: number;
+  output_tokens: number;
+  estimated_cost_usd: number;
 }
 
 export interface TelegramUser {

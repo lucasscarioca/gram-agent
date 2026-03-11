@@ -1,3 +1,4 @@
+import type { ModelSpec } from "../llm/catalog";
 import type { SessionRow } from "../types";
 
 import type { InlineKeyboardButton } from "./client";
@@ -27,12 +28,12 @@ export function buildSessionKeyboard(
 }
 
 export function buildModelKeyboard(
-  models: string[],
+  models: ModelSpec[],
   currentModel: string,
 ): InlineKeyboardButton[][] {
   return models.map((model) => {
-    const label = model === currentModel ? `[current] ${model}` : model;
-    return [{ text: label, callback_data: `model:${model}` }];
+    const label = model.id === currentModel ? `[current] ${model.label}` : model.label;
+    return [{ text: label, callback_data: `model:${model.id}` }];
   });
 }
 

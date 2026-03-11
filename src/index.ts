@@ -8,10 +8,18 @@ import {
   parseCallbackAction,
   parseCommand,
 } from "./domain/protocol";
-import { GoogleLlmProvider } from "./llm/google";
+import { estimateCostUsd, getModelSpec, getModelSpecs } from "./llm/catalog";
+import { LlmRegistry } from "./llm/registry";
 import { TelegramClient } from "./telegram/client";
 import { buildModelKeyboard, buildReplyControls, buildSessionKeyboard } from "./telegram/render";
-import type { EnvBindings, SessionRow, TelegramMessage, TelegramUpdate } from "./types";
+import type {
+  EnvBindings,
+  GroupedUsageRow,
+  SessionRow,
+  TelegramMessage,
+  TelegramUpdate,
+  UsageTotalsRow,
+} from "./types";
 
 const MAX_USER_MESSAGE_LENGTH = 4000;
 const SYSTEM_PROMPT =
@@ -38,7 +46,12 @@ app.post("/webhooks/telegram/:secret", async (c) => {
   const update = (await c.req.json()) as TelegramUpdate;
   const repo = new Repo(env.DB);
   const telegram = new TelegramClient(config.telegramBotToken);
-  const llm = new GoogleLlmProvider(config.googleApiKey);
+  const llm = LlmRegistry.fromConfig({
+    googleApiKey: config.googleApiKey,
+    openAiApiKey: config.openAiApiKey,
+    anthropicApiKey: config.anthropicApiKey,
+    openRouterApiKey: config.openRouterApiKey,
+  });
 
   try {
     await handleUpdate({ update, config, repo, telegram, llm });
@@ -54,7 +67,7 @@ async function handleUpdate(input: {
   config: ReturnType<typeof getConfig>;
   repo: Repo;
   telegram: TelegramClient;
-  llm: GoogleLlmProvider;
+  llm: LlmRegistry;
 }): Promise<void> {
   const { update, config, repo, telegram, llm } = input;
 
@@ -74,7 +87,7 @@ async function handleMessage(input: {
   config: ReturnType<typeof getConfig>;
   repo: Repo;
   telegram: TelegramClient;
-  llm: GoogleLlmProvider;
+  llm: LlmRegistry;
 }): Promise<void> {
   const { message, updateId, config, repo, telegram, llm } = input;
   const userId = message.from?.id;
@@ -138,6 +151,15 @@ async function handleMessage(input: {
     userId,
     defaultModel: config.defaultModel,
   });
+  const modelSpec = getModelSpec(session.selected_model);
+
+  if (!modelSpec) {
+    await telegram.sendMessage(message.chat.id, "Active model is invalid. Use /model to pick another one.", {
+      replyToMessageId: message.message_id,
+      inlineKeyboard: buildReplyControls(),
+    });
+    return;
+  }
 
   const messageCount = await repo.countMessages(session.id);
   const userMessageNow = now();
@@ -160,8 +182,8 @@ async function handleMessage(input: {
     id: crypto.randomUUID(),
     sessionId: session.id,
     updateId,
-    provider: "google",
-    model: session.selected_model,
+    provider: modelSpec.provider,
+    model: modelSpec.modelId,
     now: now(),
   });
 
@@ -179,7 +201,7 @@ async function handleMessage(input: {
           content: item.content_text,
         })),
       message: message.text,
-      model: session.selected_model,
+      model: modelSpec.id,
     });
 
     const sent = await telegram.sendMessage(message.chat.id, response.text, {
@@ -200,7 +222,14 @@ async function handleMessage(input: {
     await repo.completeRun({
       id: run.id,
       inputTokens: response.usage?.inputTokens,
+      cachedInputTokens: response.usage?.cachedInputTokens,
       outputTokens: response.usage?.outputTokens,
+      estimatedCostUsd: estimateCostUsd({
+        modelId: modelSpec.id,
+        inputTokens: response.usage?.inputTokens,
+        cachedInputTokens: response.usage?.cachedInputTokens,
+        outputTokens: response.usage?.outputTokens,
+      }),
     });
   } catch (error) {
     const messageText = error instanceof Error ? error.message : "Unknown model error";
@@ -231,7 +260,14 @@ async function handleCommand(input: {
   if (command === "help") {
     await telegram.sendMessage(
       chatId,
-      ["Commands:", "/new start a new session", "/list list recent sessions", "/model change the active model"].join("\n"),
+      [
+        "Commands:",
+        "/new start a new session",
+        "/list list recent sessions",
+        "/model change the active model",
+        "/status show current usage snapshot",
+        "/analytics show usage totals",
+      ].join("\n"),
       {
         replyToMessageId,
         inlineKeyboard: buildReplyControls(),
@@ -290,9 +326,35 @@ async function handleCommand(input: {
 
     await telegram.sendMessage(chatId, "Select a model for the active session:", {
       replyToMessageId,
-      inlineKeyboard: buildModelKeyboard(config.allowedModels, session.selected_model),
+      inlineKeyboard: buildModelKeyboard(getModelSpecs(config.allowedModels), session.selected_model),
     });
+    return;
   }
+
+  if (command === "status") {
+    const activeSession = await repo.getActiveSession(chatId);
+    const globalTotals = await repo.getGlobalUsageTotals();
+
+    await telegram.sendMessage(
+      chatId,
+      formatStatusMessage({
+        activeSession,
+        sessionTotals: activeSession ? await repo.getSessionUsageTotals(activeSession.id) : emptyTotals(),
+        globalTotals,
+      }),
+      {
+        replyToMessageId,
+        inlineKeyboard: buildReplyControls(),
+      },
+    );
+    return;
+  }
+
+  const analytics = await buildAnalyticsMessage(repo);
+  await telegram.sendMessage(chatId, analytics, {
+    replyToMessageId,
+    inlineKeyboard: buildReplyControls(),
+  });
 }
 
 async function handleCallback(input: {
@@ -364,7 +426,9 @@ async function handleCallback(input: {
     return;
   }
 
-  if (!config.allowedModels.includes(action.modelId)) {
+  const selectedModel = getModelSpec(action.modelId);
+
+  if (!selectedModel || !config.allowedModels.includes(selectedModel.id)) {
     await telegram.answerCallbackQuery(callback.id, "Model not allowed");
     return;
   }
@@ -376,9 +440,9 @@ async function handleCallback(input: {
     defaultModel: config.defaultModel,
   });
 
-  await repo.updateSessionModel(active.id, action.modelId, now());
+  await repo.updateSessionModel(active.id, selectedModel.id, now());
   await telegram.answerCallbackQuery(callback.id, "Model updated");
-  await telegram.sendMessage(message.chat.id, `Active model: ${action.modelId}`, {
+  await telegram.sendMessage(message.chat.id, `Active model: ${selectedModel.id}`, {
     replyToMessageId: message.message_id,
     inlineKeyboard: buildReplyControls(),
   });
@@ -404,6 +468,116 @@ async function getOrCreateActiveSession(input: {
     selectedModel: input.defaultModel,
     now: now(),
   });
+}
+
+async function buildAnalyticsMessage(repo: Repo): Promise<string> {
+  const allTime = await repo.getGlobalUsageTotals();
+
+  if (allTime.run_count === 0) {
+    return "No completed runs yet.";
+  }
+
+  const todaySince = startOfUtcDay();
+  const weekSince = subtractDays(7);
+  const monthSince = subtractDays(30);
+  const [today, sevenDays, thirtyDays, topProviders30d, topProvidersAll, topModels30d, topModelsAll] =
+    await Promise.all([
+      repo.getUsageTotalsSince(todaySince),
+      repo.getUsageTotalsSince(weekSince),
+      repo.getUsageTotalsSince(monthSince),
+      repo.getTopProviders({ since: monthSince }),
+      repo.getTopProviders({}),
+      repo.getTopModels({ since: monthSince }),
+      repo.getTopModels({}),
+    ]);
+
+  return [
+    "Analytics",
+    formatRange("Today (UTC)", today),
+    formatRange("7d", sevenDays),
+    formatRange("30d", thirtyDays),
+    formatRange("All time", allTime),
+    formatGroupedUsage("Top providers (30d)", topProviders30d),
+    formatGroupedUsage("Top providers (all time)", topProvidersAll),
+    formatGroupedUsage("Top models (30d)", topModels30d),
+    formatGroupedUsage("Top models (all time)", topModelsAll),
+  ]
+    .filter(Boolean)
+    .join("\n\n");
+}
+
+function formatStatusMessage(input: {
+  activeSession: SessionRow | null;
+  sessionTotals: UsageTotalsRow;
+  globalTotals: UsageTotalsRow;
+}): string {
+  const sessionHeader = input.activeSession
+    ? [`Active session: ${input.activeSession.title}`, `Active model: ${input.activeSession.selected_model}`].join(
+        "\n",
+      )
+    : "Active session: none";
+
+  return [
+    "Status",
+    sessionHeader,
+    formatRange("Current session", input.sessionTotals),
+    formatRange("All time", input.globalTotals),
+  ].join("\n\n");
+}
+
+function formatRange(label: string, totals: UsageTotalsRow): string {
+  return [
+    label,
+    `Runs: ${formatNumber(totals.run_count)}`,
+    `Input: ${formatNumber(totals.input_tokens)}`,
+    `Cached input: ${formatNumber(totals.cached_input_tokens)}`,
+    `Output: ${formatNumber(totals.output_tokens)}`,
+    `Est. cost: ${formatUsd(totals.estimated_cost_usd)}`,
+  ].join("\n");
+}
+
+function formatGroupedUsage(label: string, rows: GroupedUsageRow[]): string {
+  if (rows.length === 0) {
+    return "";
+  }
+
+  return [
+    label,
+    ...rows.map(
+      (row) =>
+        `${row.key} | runs ${formatNumber(row.run_count)} | in ${formatNumber(row.input_tokens)} | cached ${formatNumber(row.cached_input_tokens)} | out ${formatNumber(row.output_tokens)} | ${formatUsd(row.estimated_cost_usd)}`,
+    ),
+  ].join("\n");
+}
+
+function formatUsd(value: number): string {
+  const rounded = value.toFixed(6).replace(/0+$/, "").replace(/\.$/, "");
+  return `$${rounded || "0"}`;
+}
+
+function formatNumber(value: number): string {
+  return new Intl.NumberFormat("en-US").format(value);
+}
+
+function emptyTotals(): UsageTotalsRow {
+  return {
+    run_count: 0,
+    input_tokens: 0,
+    cached_input_tokens: 0,
+    output_tokens: 0,
+    estimated_cost_usd: 0,
+  };
+}
+
+function startOfUtcDay(reference = new Date()): string {
+  const start = new Date(
+    Date.UTC(reference.getUTCFullYear(), reference.getUTCMonth(), reference.getUTCDate(), 0, 0, 0, 0),
+  );
+  return start.toISOString();
+}
+
+function subtractDays(days: number, reference = new Date()): string {
+  return new Date(reference.getTime() - days * 24 * 60 * 60 * 1000).toISOString();
 }
 
 function now(): string {

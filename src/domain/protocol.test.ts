@@ -11,6 +11,8 @@ describe("parseCommand", () => {
   it("parses supported slash commands", () => {
     expect(parseCommand("/new")).toBe("new");
     expect(parseCommand("/model@grambot")).toBe("model");
+    expect(parseCommand("/status")).toBe("status");
+    expect(parseCommand("/analytics")).toBe("analytics");
     expect(parseCommand("hello")).toBeNull();
   });
 });

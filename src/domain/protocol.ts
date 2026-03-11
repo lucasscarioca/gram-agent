@@ -1,9 +1,9 @@
-const COMMANDS = new Set(["help", "new", "list", "model"]);
+const COMMANDS = new Set(["help", "new", "list", "model", "status", "analytics"]);
 
-export type SupportedCommand = "help" | "new" | "list" | "model";
+export type SupportedCommand = "help" | "new" | "list" | "model" | "status" | "analytics";
 
 export type CallbackAction =
-  | { kind: "command"; command: Exclude<SupportedCommand, "help"> }
+  | { kind: "command"; command: Exclude<SupportedCommand, "help" | "status" | "analytics"> }
   | { kind: "session"; sessionId: string }
   | { kind: "model"; modelId: string };
 

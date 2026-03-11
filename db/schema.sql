@@ -41,6 +41,11 @@ CREATE TABLE IF NOT EXISTS runs (
   status TEXT NOT NULL CHECK (status IN ('started', 'completed', 'failed')),
   error TEXT,
   input_tokens INTEGER,
+  cached_input_tokens INTEGER,
   output_tokens INTEGER,
+  estimated_cost_usd REAL,
   created_at TEXT NOT NULL
 );
+
+CREATE INDEX IF NOT EXISTS runs_status_created_idx
+  ON runs (status, created_at DESC);
