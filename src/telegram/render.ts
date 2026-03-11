@@ -3,16 +3,6 @@ import type { SessionRow } from "../types";
 
 import type { InlineKeyboardButton } from "./client";
 
-export function buildReplyControls(): InlineKeyboardButton[][] {
-  return [
-    [
-      { text: "New", callback_data: "command:new" },
-      { text: "Sessions", callback_data: "command:list" },
-      { text: "Model", callback_data: "command:model" },
-    ],
-  ];
-}
-
 export function buildSessionKeyboard(
   sessions: SessionRow[],
   activeSessionId: string | null,

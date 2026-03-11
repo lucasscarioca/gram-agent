@@ -23,7 +23,7 @@ If you build your own bot from this template, create your own repo and treat the
 - D1-backed chat sessions
 - AI SDK integration
 - single-user allowlist by Telegram user/chat ID
-- Telegram-first session controls with slash commands and inline buttons
+- Telegram-first session controls with slash commands and contextual inline pickers
 
 Built-in commands:
 
@@ -43,14 +43,14 @@ Flow:
 3. The Worker ignores all senders except the configured Telegram user/chat.
 4. D1 stores sessions, messages, and run metadata.
 5. AI SDK calls the configured model provider.
-6. The bot replies in Telegram with normal chat messages and inline controls.
+6. The bot replies in Telegram with normal chat messages, while commands and pickers handle session management.
 
 The point is to keep the interface Telegram-native:
 
 - chat is the primary UX
 - sessions are explicit
-- slash commands manage the session harness
-- inline keyboards handle session and model selection
+- Telegram's command menu is the default control surface
+- inline keyboards appear only for session and model selection
 
 ## Security and cost
 

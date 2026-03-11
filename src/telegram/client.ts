@@ -5,6 +5,11 @@ export interface InlineKeyboardButton {
   callback_data: string;
 }
 
+export interface TelegramCommand {
+  command: string;
+  description: string;
+}
+
 export interface SendMessageOptions {
   replyToMessageId?: number;
   inlineKeyboard?: InlineKeyboardButton[][];
@@ -21,6 +26,18 @@ export class TelegramClient {
     await this.call("sendChatAction", {
       chat_id: chatId,
       action,
+    });
+  }
+
+  async setMyCommands(commands: TelegramCommand[]): Promise<void> {
+    await this.call("setMyCommands", {
+      commands,
+    });
+  }
+
+  async setChatMenuButtonToCommands(): Promise<void> {
+    await this.call("setChatMenuButton", {
+      menu_button: { type: "commands" },
     });
   }
 
@@ -46,6 +63,14 @@ export class TelegramClient {
     await this.call("answerCallbackQuery", {
       callback_query_id: callbackQueryId,
       text,
+    });
+  }
+
+  async clearInlineKeyboard(chatId: number, messageId: number): Promise<void> {
+    await this.call("editMessageReplyMarkup", {
+      chat_id: chatId,
+      message_id: messageId,
+      reply_markup: { inline_keyboard: [] },
     });
   }
 

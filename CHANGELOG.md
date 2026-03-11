@@ -7,6 +7,8 @@ Adds:
 - Telegram-safe HTML rendering for assistant replies
 - minimal system prompt guidance for Telegram-friendly formatting
 - tests for Telegram formatting behavior
+- Telegram command-menu-first navigation instead of persistent per-message controls
+- contextual picker cleanup after session or model selection
 
 ## v0.2.0
 

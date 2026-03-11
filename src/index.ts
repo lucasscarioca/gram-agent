@@ -10,9 +10,9 @@ import {
 } from "./domain/protocol";
 import { estimateCostUsd, getModelSpec, getModelSpecs } from "./llm/catalog";
 import { LlmRegistry } from "./llm/registry";
-import { TelegramClient } from "./telegram/client";
+import { TelegramClient, type TelegramCommand } from "./telegram/client";
 import { renderTelegramHtml } from "./telegram/format";
-import { buildModelKeyboard, buildReplyControls, buildSessionKeyboard } from "./telegram/render";
+import { buildModelKeyboard, buildSessionKeyboard } from "./telegram/render";
 import type {
   EnvBindings,
   GroupedUsageRow,
@@ -25,6 +25,16 @@ import type {
 const MAX_USER_MESSAGE_LENGTH = 4000;
 const SYSTEM_PROMPT =
   "You are gram, a concise personal Telegram-first assistant. Be helpful, direct, and conversational. Format replies for Telegram with short paragraphs, flat lists, inline code, and fenced code blocks. Avoid tables.";
+const TELEGRAM_COMMANDS: TelegramCommand[] = [
+  { command: "help", description: "Show bot commands" },
+  { command: "new", description: "Start a new session" },
+  { command: "list", description: "List recent sessions" },
+  { command: "model", description: "Change active model" },
+  { command: "status", description: "Show usage snapshot" },
+  { command: "analytics", description: "Show usage totals" },
+];
+
+let telegramUiSetup: Promise<void> | null = null;
 
 const app = new Hono<{ Bindings: EnvBindings }>();
 
@@ -55,6 +65,7 @@ app.post("/webhooks/telegram/:secret", async (c) => {
   });
 
   try {
+    await ensureTelegramUi(telegram);
     await handleUpdate({ update, config, repo, telegram, llm });
     return c.json({ ok: true });
   } catch (error) {
@@ -128,7 +139,6 @@ async function handleMessage(input: {
   if (!message.text) {
     await telegram.sendMessage(message.chat.id, "Text only for now.", {
       replyToMessageId: message.message_id,
-      inlineKeyboard: buildReplyControls(),
     });
     return;
   }
@@ -139,7 +149,6 @@ async function handleMessage(input: {
       `Message too long. Keep it under ${MAX_USER_MESSAGE_LENGTH} characters.`,
       {
         replyToMessageId: message.message_id,
-        inlineKeyboard: buildReplyControls(),
       },
     );
     return;
@@ -157,7 +166,6 @@ async function handleMessage(input: {
   if (!modelSpec) {
     await telegram.sendMessage(message.chat.id, "Active model is invalid. Use /model to pick another one.", {
       replyToMessageId: message.message_id,
-      inlineKeyboard: buildReplyControls(),
     });
     return;
   }
@@ -207,7 +215,6 @@ async function handleMessage(input: {
 
     const sent = await telegram.sendMessage(message.chat.id, renderTelegramHtml(response.text), {
       replyToMessageId: message.message_id,
-      inlineKeyboard: buildReplyControls(),
     });
 
     await repo.appendMessage({
@@ -238,7 +245,6 @@ async function handleMessage(input: {
     await repo.failRun(run.id, messageText);
     await telegram.sendMessage(message.chat.id, "Model request failed. Try again.", {
       replyToMessageId: message.message_id,
-      inlineKeyboard: buildReplyControls(),
     });
   }
 }
@@ -271,7 +277,6 @@ async function handleCommand(input: {
       ].join("\n"),
       {
         replyToMessageId,
-        inlineKeyboard: buildReplyControls(),
       },
     );
     return;
@@ -287,14 +292,9 @@ async function handleCommand(input: {
       now: now(),
     });
 
-    await telegram.sendMessage(
-      chatId,
-      `Started a new session.\nModel: ${session.selected_model}`,
-      {
-        replyToMessageId,
-        inlineKeyboard: buildReplyControls(),
-      },
-    );
+    await telegram.sendMessage(chatId, `Started a new session.\nModel: ${session.selected_model}`, {
+      replyToMessageId,
+    });
     return;
   }
 
@@ -305,7 +305,6 @@ async function handleCommand(input: {
     if (sessions.length === 0) {
       await telegram.sendMessage(chatId, "No sessions yet. Use /new or send a message.", {
         replyToMessageId,
-        inlineKeyboard: buildReplyControls(),
       });
       return;
     }
@@ -345,7 +344,6 @@ async function handleCommand(input: {
       }),
       {
         replyToMessageId,
-        inlineKeyboard: buildReplyControls(),
       },
     );
     return;
@@ -354,7 +352,6 @@ async function handleCommand(input: {
   const analytics = await buildAnalyticsMessage(repo);
   await telegram.sendMessage(chatId, analytics, {
     replyToMessageId,
-    inlineKeyboard: buildReplyControls(),
   });
 }
 
@@ -394,6 +391,7 @@ async function handleCallback(input: {
 
   if (action.kind === "command") {
     await telegram.answerCallbackQuery(callback.id);
+    await clearPickerKeyboard(telegram, message.chat.id, message.message_id);
     await handleCommand({
       command: action.command,
       chatId: message.chat.id,
@@ -416,12 +414,12 @@ async function handleCallback(input: {
 
     await repo.setActiveSession(message.chat.id, session.id, now());
     await telegram.answerCallbackQuery(callback.id, "Session switched");
+    await clearPickerKeyboard(telegram, message.chat.id, message.message_id);
     await telegram.sendMessage(
       message.chat.id,
       `Active session: ${session.title}\nModel: ${session.selected_model}`,
       {
         replyToMessageId: message.message_id,
-        inlineKeyboard: buildReplyControls(),
       },
     );
     return;
@@ -443,10 +441,32 @@ async function handleCallback(input: {
 
   await repo.updateSessionModel(active.id, selectedModel.id, now());
   await telegram.answerCallbackQuery(callback.id, "Model updated");
+  await clearPickerKeyboard(telegram, message.chat.id, message.message_id);
   await telegram.sendMessage(message.chat.id, `Active model: ${selectedModel.id}`, {
     replyToMessageId: message.message_id,
-    inlineKeyboard: buildReplyControls(),
   });
+}
+
+async function ensureTelegramUi(telegram: TelegramClient): Promise<void> {
+  if (!telegramUiSetup) {
+    telegramUiSetup = (async () => {
+      await telegram.setMyCommands(TELEGRAM_COMMANDS);
+      await telegram.setChatMenuButtonToCommands();
+    })().catch((error) => {
+      telegramUiSetup = null;
+      throw error;
+    });
+  }
+
+  await telegramUiSetup;
+}
+
+async function clearPickerKeyboard(telegram: TelegramClient, chatId: number, messageId: number): Promise<void> {
+  try {
+    await telegram.clearInlineKeyboard(chatId, messageId);
+  } catch (error) {
+    console.warn("failed to clear picker keyboard", error);
+  }
 }
 
 async function getOrCreateActiveSession(input: {
