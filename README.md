@@ -149,10 +149,29 @@ Remote:
 pnpm run db:setup:remote
 ```
 
+These setup commands also stamp the current migration files into `d1_migrations`
+so future upgrade runs stay in sync with the schema snapshot.
+
 #### 5b. Apply migrations for upgrades
 
 Use this only when upgrading an existing database after pulling newer changes.
 Do not use migrations to create the initial schema from scratch.
+
+Check database health first:
+
+Local:
+
+```bash
+pnpm run db:doctor:local
+```
+
+Remote:
+
+```bash
+pnpm run db:doctor:remote
+```
+
+Then apply migrations:
 
 Local:
 
@@ -258,8 +277,13 @@ Analytics:
 - `db/schema.sql` is for fresh databases; upgrades should use `db/migrations/`.
 - Fresh setup:
   `pnpm run db:setup:local` or `pnpm run db:setup:remote`
+- Schema-based setup also records the current migration files with
+  `db:stamp:local` or `db:stamp:remote`
 - Upgrades:
+  `pnpm run db:doctor:local` or `pnpm run db:doctor:remote`, then
   `pnpm run db:migrate:local` or `pnpm run db:migrate:remote`
 - Add a new numbered SQL file in `db/migrations/` for every schema change after initial setup.
+- `db:migrate:*` now runs `db:doctor:*` first and fails fast on schema/ledger drift.
+- If a schema change was applied manually, reconcile `d1_migrations` before running Wrangler migrations again.
 - Future versions can add more built-in features, but the goal is to keep this starter lightweight.
 - See [CHANGELOG.md](./CHANGELOG.md) for tagged starter milestones.
