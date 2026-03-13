@@ -14,6 +14,7 @@ Adds:
 - tests for Telegram formatting behavior
 - Telegram command-menu-first navigation instead of persistent per-message controls
 - contextual picker cleanup after session or model selection
+- AI SDK v6 usage typing alignment for cached input token tracking via `inputTokenDetails.cacheReadTokens`
 
 ## v0.2.0
 

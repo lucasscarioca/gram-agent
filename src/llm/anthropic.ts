@@ -1,7 +1,7 @@
 import { createAnthropic } from "@ai-sdk/anthropic";
 import { generateText } from "ai";
 
-import type { LlmProvider } from "./provider";
+import type { LlmProvider, LlmUsage } from "./provider";
 
 export class AnthropicLlmProvider implements LlmProvider {
   private readonly anthropic;
@@ -17,11 +17,7 @@ export class AnthropicLlmProvider implements LlmProvider {
     model: string;
   }): Promise<{
     text: string;
-    usage?: {
-      inputTokens?: number;
-      outputTokens?: number;
-      cachedInputTokens?: number;
-    };
+    usage?: LlmUsage;
   }> {
     const result = await generateText({
       model: this.anthropic(input.model),
@@ -40,12 +36,7 @@ export class AnthropicLlmProvider implements LlmProvider {
 
     return {
       text: result.text,
-      usage: {
-        inputTokens: result.usage?.inputTokens,
-        outputTokens: result.usage?.outputTokens,
-        cachedInputTokens:
-          result.usage?.cachedInputTokens ?? result.usage?.inputTokenDetails?.cacheReadTokens,
-      },
+      usage: result.usage,
     };
   }
 }

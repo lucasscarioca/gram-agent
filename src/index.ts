@@ -12,6 +12,7 @@ import {
 } from "./domain/protocol";
 import { estimateCostUsd, getModelSpec, getModelSpecs } from "./llm/catalog";
 import { LlmRegistry } from "./llm/registry";
+import { getCachedInputTokens } from "./llm/provider";
 import { TelegramClient, type TelegramCommand } from "./telegram/client";
 import { renderTelegramHtml } from "./telegram/format";
 import {
@@ -258,6 +259,7 @@ async function handleMessage(input: {
       message: message.text,
       model: modelSpec.id,
     });
+    const cachedInputTokens = getCachedInputTokens(response.usage);
 
     const sent = await telegram.sendMessage(message.chat.id, renderTelegramHtml(response.text), {
       replyToMessageId: message.message_id,
@@ -276,12 +278,12 @@ async function handleMessage(input: {
     await repo.completeRun({
       id: run.id,
       inputTokens: response.usage?.inputTokens,
-      cachedInputTokens: response.usage?.cachedInputTokens,
+      cachedInputTokens,
       outputTokens: response.usage?.outputTokens,
       estimatedCostUsd: estimateCostUsd({
         modelId: modelSpec.id,
         inputTokens: response.usage?.inputTokens,
-        cachedInputTokens: response.usage?.cachedInputTokens,
+        cachedInputTokens,
         outputTokens: response.usage?.outputTokens,
       }),
     });

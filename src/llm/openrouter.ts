@@ -1,7 +1,7 @@
 import { createOpenAICompatible } from "@ai-sdk/openai-compatible";
 import { generateText } from "ai";
 
-import type { LlmProvider } from "./provider";
+import type { LlmProvider, LlmUsage } from "./provider";
 
 export class OpenRouterLlmProvider implements LlmProvider {
   private readonly openrouter;
@@ -21,11 +21,7 @@ export class OpenRouterLlmProvider implements LlmProvider {
     model: string;
   }): Promise<{
     text: string;
-    usage?: {
-      inputTokens?: number;
-      outputTokens?: number;
-      cachedInputTokens?: number;
-    };
+    usage?: LlmUsage;
   }> {
     const result = await generateText({
       model: this.openrouter(input.model),
@@ -44,12 +40,7 @@ export class OpenRouterLlmProvider implements LlmProvider {
 
     return {
       text: result.text,
-      usage: {
-        inputTokens: result.usage?.inputTokens,
-        outputTokens: result.usage?.outputTokens,
-        cachedInputTokens:
-          result.usage?.cachedInputTokens ?? result.usage?.inputTokenDetails?.cacheReadTokens,
-      },
+      usage: result.usage,
     };
   }
 }

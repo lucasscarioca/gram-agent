@@ -3,7 +3,7 @@ import { getModelSpec, type ProviderId, type QualifiedModelId } from "./catalog"
 import { GoogleLlmProvider } from "./google";
 import { OpenAiLlmProvider } from "./openai";
 import { OpenRouterLlmProvider } from "./openrouter";
-import type { LlmProvider } from "./provider";
+import type { LlmProvider, LlmUsage } from "./provider";
 
 interface ProviderClients {
   google?: LlmProvider;
@@ -42,11 +42,7 @@ export class LlmRegistry {
     provider: ProviderId;
     rawModelId: string;
     text: string;
-    usage?: {
-      inputTokens?: number;
-      outputTokens?: number;
-      cachedInputTokens?: number;
-    };
+    usage?: LlmUsage;
   }> {
     const spec = getModelSpec(input.model);
 

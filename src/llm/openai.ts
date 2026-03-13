@@ -1,7 +1,7 @@
 import { createOpenAI } from "@ai-sdk/openai";
 import { generateText } from "ai";
 
-import type { LlmProvider } from "./provider";
+import type { LlmProvider, LlmUsage } from "./provider";
 
 export class OpenAiLlmProvider implements LlmProvider {
   private readonly openai;
@@ -17,11 +17,7 @@ export class OpenAiLlmProvider implements LlmProvider {
     model: string;
   }): Promise<{
     text: string;
-    usage?: {
-      inputTokens?: number;
-      outputTokens?: number;
-      cachedInputTokens?: number;
-    };
+    usage?: LlmUsage;
   }> {
     const result = await generateText({
       model: this.openai(input.model),
@@ -40,12 +36,7 @@ export class OpenAiLlmProvider implements LlmProvider {
 
     return {
       text: result.text,
-      usage: {
-        inputTokens: result.usage?.inputTokens,
-        outputTokens: result.usage?.outputTokens,
-        cachedInputTokens:
-          result.usage?.cachedInputTokens ?? result.usage?.inputTokenDetails?.cacheReadTokens,
-      },
+      usage: result.usage,
     };
   }
 }
