@@ -4,6 +4,13 @@
 
 Adds:
 
+- Telegram-first agent tools: `datetime`, `question`, `web_search`, and `web_fetch`
+- D1-backed resumable agent runs, tool-call state, pending approvals, and pending questions
+- per-chat tool permissions for web search provider access and web fetch domain access
+- Exa-backed web search with explicit native `web_fetch` page reads on Cloudflare Workers
+- Telegram-native tool status messages, permission prompts, and inline question flows
+- SSRF guards and response-size limits for `web_fetch`
+- tests for tool runtime helpers and web fetch URL safety
 - session rename and delete flows via Telegram commands and inline session management actions
 - D1-backed pending session rename state for Telegram callback-to-message flows
 - date-prefixed session titles with first-message naming and manual-title precedence metadata
