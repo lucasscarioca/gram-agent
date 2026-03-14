@@ -14,6 +14,10 @@ export class OpenRouterLlmProvider implements LlmProvider {
     });
   }
 
+  getModel(model: string) {
+    return this.openrouter(model);
+  }
+
   async respond(input: {
     system: string;
     history: Array<{ role: "system" | "user" | "assistant"; content: string }>;
@@ -24,7 +28,7 @@ export class OpenRouterLlmProvider implements LlmProvider {
     usage?: LlmUsage;
   }> {
     const result = await generateText({
-      model: this.openrouter(input.model),
+      model: this.getModel(input.model),
       system: input.system,
       messages: [
         ...input.history.map((item) => ({

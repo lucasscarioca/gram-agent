@@ -196,6 +196,7 @@ pnpm exec wrangler secret put GOOGLE_GENERATIVE_AI_API_KEY
 pnpm exec wrangler secret put OPENAI_API_KEY
 pnpm exec wrangler secret put ANTHROPIC_API_KEY
 pnpm exec wrangler secret put OPENROUTER_API_KEY
+pnpm exec wrangler secret put EXA_API_KEY
 ```
 
 Generate `TELEGRAM_WEBHOOK_SECRET` with something like:
@@ -254,6 +255,13 @@ Built-in provider support:
 - OpenAI
 - Anthropic
 - OpenRouter
+
+Built-in tools:
+
+- `datetime`
+- `question`
+- `web_search` via Exa
+- `web_fetch` via native Worker fetch with per-domain approval
 
 Built-in models use `provider:model` ids, for example:
 

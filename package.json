@@ -66,6 +66,9 @@
 			},
 			"OPENROUTER_API_KEY": {
 				"description": "OpenRouter API key used for curated OpenRouter model support."
+			},
+			"EXA_API_KEY": {
+				"description": "Exa API key used for the web_search tool."
 			}
 		}
 	}

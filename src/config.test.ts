@@ -14,8 +14,14 @@ function createEnv(overrides: Partial<EnvBindings> = {}): EnvBindings {
     OPENAI_API_KEY: undefined,
     ANTHROPIC_API_KEY: undefined,
     OPENROUTER_API_KEY: undefined,
+    EXA_API_KEY: undefined,
     DEFAULT_MODEL: undefined,
     ALLOWED_MODELS: undefined,
+    MAX_TOOL_CALLS_PER_RUN: undefined,
+    MAX_WEB_SEARCHES_PER_RUN: undefined,
+    MAX_WEB_FETCHES_PER_RUN: undefined,
+    MAX_WEB_FETCH_BYTES: undefined,
+    SHOW_TOOL_STATUS_MESSAGES: undefined,
     ...overrides,
   };
 }
@@ -53,5 +59,25 @@ describe("getConfig", () => {
         }),
       ),
     ).toThrow("Unknown model in ALLOWED_MODELS");
+  });
+
+  it("applies tool config defaults and boolean parsing", () => {
+    const config = getConfig(
+      createEnv({
+        EXA_API_KEY: "exa-key",
+        MAX_TOOL_CALLS_PER_RUN: "12",
+        MAX_WEB_SEARCHES_PER_RUN: "3",
+        MAX_WEB_FETCHES_PER_RUN: "5",
+        MAX_WEB_FETCH_BYTES: "1234",
+        SHOW_TOOL_STATUS_MESSAGES: "false",
+      }),
+    );
+
+    expect(config.exaApiKey).toBe("exa-key");
+    expect(config.maxToolCallsPerRun).toBe(12);
+    expect(config.maxWebSearchesPerRun).toBe(3);
+    expect(config.maxWebFetchesPerRun).toBe(5);
+    expect(config.maxWebFetchBytes).toBe(1234);
+    expect(config.showToolStatusMessages).toBe(false);
   });
 });

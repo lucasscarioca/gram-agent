@@ -74,6 +74,29 @@ export class TelegramClient {
     });
   }
 
+  async editMessageText(
+    chatId: number,
+    messageId: number,
+    text: string,
+    options: { inlineKeyboard?: InlineKeyboardButton[][] } = {},
+  ): Promise<void> {
+    await this.call("editMessageText", {
+      chat_id: chatId,
+      message_id: messageId,
+      text,
+      parse_mode: "HTML",
+      reply_markup: options.inlineKeyboard ? { inline_keyboard: options.inlineKeyboard } : undefined,
+    });
+  }
+
+  async editInlineKeyboard(chatId: number, messageId: number, inlineKeyboard: InlineKeyboardButton[][]): Promise<void> {
+    await this.call("editMessageReplyMarkup", {
+      chat_id: chatId,
+      message_id: messageId,
+      reply_markup: { inline_keyboard: inlineKeyboard },
+    });
+  }
+
   private async call<T>(method: string, body: Record<string, unknown>): Promise<TelegramApiResponse<T>> {
     const response = await fetch(`${this.baseUrl}/${method}`, {
       method: "POST",

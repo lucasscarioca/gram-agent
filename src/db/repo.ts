@@ -1,10 +1,15 @@
 import type {
+  AgentRunRow,
   ChatRow,
   GroupedUsageRow,
   MessageRow,
   PendingChatActionRow,
+  PendingQuestionRow,
+  PendingToolApprovalRow,
   RunRow,
   SessionRow,
+  ToolCallRow,
+  ToolPermissionRow,
   UsageTotalsRow,
 } from "../types";
 
@@ -253,6 +258,22 @@ export class Repo {
   }
 
   async deleteSession(sessionId: string, chatId: number): Promise<void> {
+    await this.db
+      .prepare(`DELETE FROM pending_tool_approvals WHERE run_id IN (SELECT id FROM runs WHERE session_id = ?)`)
+      .bind(sessionId)
+      .run();
+    await this.db
+      .prepare(`DELETE FROM pending_questions WHERE run_id IN (SELECT id FROM runs WHERE session_id = ?)`)
+      .bind(sessionId)
+      .run();
+    await this.db
+      .prepare(`DELETE FROM tool_calls WHERE run_id IN (SELECT id FROM runs WHERE session_id = ?)`)
+      .bind(sessionId)
+      .run();
+    await this.db
+      .prepare(`DELETE FROM agent_runs WHERE run_id IN (SELECT id FROM runs WHERE session_id = ?)`)
+      .bind(sessionId)
+      .run();
     await this.db.prepare(`DELETE FROM messages WHERE session_id = ?`).bind(sessionId).run();
     await this.db.prepare(`DELETE FROM runs WHERE session_id = ?`).bind(sessionId).run();
     await this.db.prepare(`DELETE FROM pending_chat_actions WHERE session_id = ?`).bind(sessionId).run();
@@ -462,6 +483,502 @@ export class Repo {
       )
       .bind(error, id)
       .run();
+  }
+
+  async createAgentRun(input: {
+    runId: string;
+    sessionId: string;
+    chatId: number;
+    replyToMessageId: number;
+    provider: string;
+    model: string;
+    messagesJson: string;
+    now: string;
+  }): Promise<void> {
+    await this.db
+      .prepare(
+        `
+          INSERT INTO agent_runs (
+            run_id,
+            session_id,
+            chat_id,
+            reply_to_message_id,
+            status,
+            model,
+            provider,
+            messages_json,
+            last_error,
+            created_at,
+            updated_at,
+            completed_at
+          )
+          VALUES (?, ?, ?, ?, 'started', ?, ?, ?, NULL, ?, ?, NULL)
+        `,
+      )
+      .bind(
+        input.runId,
+        input.sessionId,
+        input.chatId,
+        input.replyToMessageId,
+        input.model,
+        input.provider,
+        input.messagesJson,
+        input.now,
+        input.now,
+      )
+      .run();
+  }
+
+  async getAgentRun(runId: string): Promise<AgentRunRow | null> {
+    const row = await this.db
+      .prepare(
+        `
+          SELECT
+            run_id,
+            session_id,
+            chat_id,
+            reply_to_message_id,
+            status,
+            model,
+            provider,
+            messages_json,
+            last_error,
+            created_at,
+            updated_at,
+            completed_at
+          FROM agent_runs
+          WHERE run_id = ?
+        `,
+      )
+      .bind(runId)
+      .first<AgentRunRow>();
+
+    return row ?? null;
+  }
+
+  async getActiveAgentRunForChat(chatId: number): Promise<AgentRunRow | null> {
+    const row = await this.db
+      .prepare(
+        `
+          SELECT
+            run_id,
+            session_id,
+            chat_id,
+            reply_to_message_id,
+            status,
+            model,
+            provider,
+            messages_json,
+            last_error,
+            created_at,
+            updated_at,
+            completed_at
+          FROM agent_runs
+          WHERE chat_id = ?
+            AND status IN ('started', 'waiting_permission', 'waiting_question')
+          ORDER BY updated_at DESC, created_at DESC
+          LIMIT 1
+        `,
+      )
+      .bind(chatId)
+      .first<AgentRunRow>();
+
+    return row ?? null;
+  }
+
+  async updateAgentRunMessages(runId: string, messagesJson: string, now: string): Promise<void> {
+    await this.db
+      .prepare(
+        `
+          UPDATE agent_runs
+          SET messages_json = ?, updated_at = ?
+          WHERE run_id = ?
+        `,
+      )
+      .bind(messagesJson, now, runId)
+      .run();
+  }
+
+  async setAgentRunStatus(input: {
+    runId: string;
+    status: AgentRunRow["status"];
+    now: string;
+    lastError?: string | null;
+    completedAt?: string | null;
+  }): Promise<void> {
+    await this.db
+      .prepare(
+        `
+          UPDATE agent_runs
+          SET status = ?,
+              last_error = ?,
+              updated_at = ?,
+              completed_at = ?
+          WHERE run_id = ?
+        `,
+      )
+      .bind(input.status, input.lastError ?? null, input.now, input.completedAt ?? null, input.runId)
+      .run();
+  }
+
+  async upsertToolCall(input: {
+    id: string;
+    runId: string;
+    toolName: ToolCallRow["tool_name"];
+    status: ToolCallRow["status"];
+    inputJson: string;
+    now: string;
+  }): Promise<void> {
+    await this.db
+      .prepare(
+        `
+          INSERT INTO tool_calls (
+            id,
+            run_id,
+            tool_name,
+            status,
+            input_json,
+            output_json,
+            summary_text,
+            display_message_id,
+            error,
+            created_at,
+            updated_at
+          )
+          VALUES (?, ?, ?, ?, ?, NULL, NULL, NULL, NULL, ?, ?)
+          ON CONFLICT(id) DO UPDATE SET
+            status = excluded.status,
+            input_json = excluded.input_json,
+            updated_at = excluded.updated_at
+        `,
+      )
+      .bind(input.id, input.runId, input.toolName, input.status, input.inputJson, input.now, input.now)
+      .run();
+  }
+
+  async getToolCall(id: string): Promise<ToolCallRow | null> {
+    const row = await this.db
+      .prepare(
+        `
+          SELECT
+            id,
+            run_id,
+            tool_name,
+            status,
+            input_json,
+            output_json,
+            summary_text,
+            display_message_id,
+            error,
+            created_at,
+            updated_at
+          FROM tool_calls
+          WHERE id = ?
+        `,
+      )
+      .bind(id)
+      .first<ToolCallRow>();
+
+    return row ?? null;
+  }
+
+  async updateToolCallDisplayMessage(id: string, displayMessageId: number, now: string): Promise<void> {
+    await this.db
+      .prepare(
+        `
+          UPDATE tool_calls
+          SET display_message_id = ?, updated_at = ?
+          WHERE id = ?
+        `,
+      )
+      .bind(displayMessageId, now, id)
+      .run();
+  }
+
+  async updateToolCallStatus(input: {
+    id: string;
+    status: ToolCallRow["status"];
+    now: string;
+    outputJson?: string | null;
+    summaryText?: string | null;
+    error?: string | null;
+  }): Promise<void> {
+    await this.db
+      .prepare(
+        `
+          UPDATE tool_calls
+          SET status = ?,
+              output_json = COALESCE(?, output_json),
+              summary_text = COALESCE(?, summary_text),
+              error = ?,
+              updated_at = ?
+          WHERE id = ?
+        `,
+      )
+      .bind(
+        input.status,
+        input.outputJson ?? null,
+        input.summaryText ?? null,
+        input.error ?? null,
+        input.now,
+        input.id,
+      )
+      .run();
+  }
+
+  async countToolCalls(runId: string, toolName?: ToolCallRow["tool_name"]): Promise<number> {
+    const row = await this.db
+      .prepare(
+        toolName
+          ? `SELECT COUNT(*) AS count FROM tool_calls WHERE run_id = ? AND tool_name = ?`
+          : `SELECT COUNT(*) AS count FROM tool_calls WHERE run_id = ?`,
+      )
+      .bind(...(toolName ? [runId, toolName] : [runId]))
+      .first<{ count: number | string }>();
+
+    return Number(row?.count ?? 0);
+  }
+
+  async putToolPermission(input: {
+    id: string;
+    chatId: number;
+    toolName: ToolPermissionRow["tool_name"];
+    scopeType: ToolPermissionRow["scope_type"];
+    scopeValue: string;
+    now: string;
+  }): Promise<void> {
+    await this.db
+      .prepare(
+        `
+          INSERT INTO tool_permissions (
+            id,
+            chat_id,
+            tool_name,
+            scope_type,
+            scope_value,
+            decision,
+            created_at,
+            updated_at
+          )
+          VALUES (?, ?, ?, ?, ?, 'allow', ?, ?)
+          ON CONFLICT(chat_id, tool_name, scope_type, scope_value) DO UPDATE SET
+            updated_at = excluded.updated_at
+        `,
+      )
+      .bind(input.id, input.chatId, input.toolName, input.scopeType, input.scopeValue, input.now, input.now)
+      .run();
+  }
+
+  async getToolPermission(input: {
+    chatId: number;
+    toolName: ToolPermissionRow["tool_name"];
+    scopeType: ToolPermissionRow["scope_type"];
+    scopeValue: string;
+  }): Promise<ToolPermissionRow | null> {
+    const row = await this.db
+      .prepare(
+        `
+          SELECT
+            id,
+            chat_id,
+            tool_name,
+            scope_type,
+            scope_value,
+            decision,
+            created_at,
+            updated_at
+          FROM tool_permissions
+          WHERE chat_id = ?
+            AND tool_name = ?
+            AND scope_type = ?
+            AND scope_value = ?
+        `,
+      )
+      .bind(input.chatId, input.toolName, input.scopeType, input.scopeValue)
+      .first<ToolPermissionRow>();
+
+    return row ?? null;
+  }
+
+  async createPendingToolApproval(input: {
+    id: string;
+    runId: string;
+    toolCallId: string;
+    chatId: number;
+    toolName: PendingToolApprovalRow["tool_name"];
+    scopeType: PendingToolApprovalRow["scope_type"];
+    scopeValue: string;
+    requestJson: string;
+    now: string;
+  }): Promise<void> {
+    await this.db
+      .prepare(
+        `
+          INSERT OR REPLACE INTO pending_tool_approvals (
+            id,
+            run_id,
+            tool_call_id,
+            chat_id,
+            tool_name,
+            scope_type,
+            scope_value,
+            request_json,
+            created_at
+          )
+          VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+        `,
+      )
+      .bind(
+        input.id,
+        input.runId,
+        input.toolCallId,
+        input.chatId,
+        input.toolName,
+        input.scopeType,
+        input.scopeValue,
+        input.requestJson,
+        input.now,
+      )
+      .run();
+  }
+
+  async getPendingToolApproval(id: string): Promise<PendingToolApprovalRow | null> {
+    const row = await this.db
+      .prepare(
+        `
+          SELECT
+            id,
+            run_id,
+            tool_call_id,
+            chat_id,
+            tool_name,
+            scope_type,
+            scope_value,
+            request_json,
+            created_at
+          FROM pending_tool_approvals
+          WHERE id = ?
+        `,
+      )
+      .bind(id)
+      .first<PendingToolApprovalRow>();
+
+    return row ?? null;
+  }
+
+  async listPendingToolApprovals(runId: string): Promise<PendingToolApprovalRow[]> {
+    const result = await this.db
+      .prepare(
+        `
+          SELECT
+            id,
+            run_id,
+            tool_call_id,
+            chat_id,
+            tool_name,
+            scope_type,
+            scope_value,
+            request_json,
+            created_at
+          FROM pending_tool_approvals
+          WHERE run_id = ?
+          ORDER BY created_at ASC
+        `,
+      )
+      .bind(runId)
+      .all<PendingToolApprovalRow>();
+
+    return result.results ?? [];
+  }
+
+  async deletePendingToolApproval(id: string): Promise<void> {
+    await this.db.prepare(`DELETE FROM pending_tool_approvals WHERE id = ?`).bind(id).run();
+  }
+
+  async deletePendingToolApprovalsForRun(runId: string): Promise<void> {
+    await this.db.prepare(`DELETE FROM pending_tool_approvals WHERE run_id = ?`).bind(runId).run();
+  }
+
+  async createPendingQuestion(input: {
+    id: string;
+    runId: string;
+    toolCallId: string;
+    chatId: number;
+    questionKind: PendingQuestionRow["question_kind"];
+    questionJson: string;
+    now: string;
+  }): Promise<void> {
+    await this.db
+      .prepare(
+        `
+          INSERT OR REPLACE INTO pending_questions (
+            id,
+            run_id,
+            tool_call_id,
+            chat_id,
+            question_kind,
+            question_json,
+            created_at
+          )
+          VALUES (?, ?, ?, ?, ?, ?, ?)
+        `,
+      )
+      .bind(input.id, input.runId, input.toolCallId, input.chatId, input.questionKind, input.questionJson, input.now)
+      .run();
+  }
+
+  async getPendingQuestion(id: string): Promise<PendingQuestionRow | null> {
+    const row = await this.db
+      .prepare(
+        `
+          SELECT
+            id,
+            run_id,
+            tool_call_id,
+            chat_id,
+            question_kind,
+            question_json,
+            created_at
+          FROM pending_questions
+          WHERE id = ?
+        `,
+      )
+      .bind(id)
+      .first<PendingQuestionRow>();
+
+    return row ?? null;
+  }
+
+  async getPendingQuestionForChat(chatId: number): Promise<PendingQuestionRow | null> {
+    const row = await this.db
+      .prepare(
+        `
+          SELECT
+            id,
+            run_id,
+            tool_call_id,
+            chat_id,
+            question_kind,
+            question_json,
+            created_at
+          FROM pending_questions
+          WHERE chat_id = ?
+          ORDER BY created_at DESC
+          LIMIT 1
+        `,
+      )
+      .bind(chatId)
+      .first<PendingQuestionRow>();
+
+    return row ?? null;
+  }
+
+  async deletePendingQuestion(id: string): Promise<void> {
+    await this.db.prepare(`DELETE FROM pending_questions WHERE id = ?`).bind(id).run();
+  }
+
+  async deletePendingQuestionsForRun(runId: string): Promise<void> {
+    await this.db.prepare(`DELETE FROM pending_questions WHERE run_id = ?`).bind(runId).run();
   }
 
   async getSessionUsageTotals(sessionId: string): Promise<UsageTotalsRow> {

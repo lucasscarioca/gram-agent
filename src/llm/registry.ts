@@ -33,6 +33,22 @@ export class LlmRegistry {
     return this.getClient(provider) !== null;
   }
 
+  getModel(model: QualifiedModelId) {
+    const spec = getModelSpec(model);
+
+    if (!spec) {
+      throw new Error(`Unsupported model: ${model}`);
+    }
+
+    const client = this.getClient(spec.provider);
+
+    if (!client) {
+      throw new Error(`Provider not configured: ${spec.provider}`);
+    }
+
+    return client.getModel(spec.modelId);
+  }
+
   async respond(input: {
     system: string;
     history: Array<{ role: "system" | "user" | "assistant"; content: string }>;

@@ -59,6 +59,39 @@ describe("parseCallbackAction", () => {
       kind: "model",
       modelId: "gemini-2.5-flash",
     });
+    expect(parseCallbackAction("tpd:perm1")).toEqual({
+      kind: "tool_permission",
+      decision: "deny",
+      approvalId: "perm1",
+    });
+    expect(parseCallbackAction("tpo:perm1")).toEqual({
+      kind: "tool_permission",
+      decision: "once",
+      approvalId: "perm1",
+    });
+    expect(parseCallbackAction("tpa:perm1")).toEqual({
+      kind: "tool_permission",
+      decision: "always",
+      approvalId: "perm1",
+    });
+    expect(parseCallbackAction("qsel:q1:2")).toEqual({
+      kind: "question_select",
+      questionId: "q1",
+      optionIndex: 2,
+    });
+    expect(parseCallbackAction("qtog:q1:1")).toEqual({
+      kind: "question_toggle",
+      questionId: "q1",
+      optionIndex: 1,
+    });
+    expect(parseCallbackAction("qsub:q1")).toEqual({
+      kind: "question_submit",
+      questionId: "q1",
+    });
+    expect(parseCallbackAction("qcan:q1")).toEqual({
+      kind: "question_cancel",
+      questionId: "q1",
+    });
   });
 });
 

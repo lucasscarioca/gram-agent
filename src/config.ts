@@ -20,8 +20,23 @@ const envSchema = z.object({
   OPENAI_API_KEY: z.string().min(1).optional(),
   ANTHROPIC_API_KEY: z.string().min(1).optional(),
   OPENROUTER_API_KEY: z.string().min(1).optional(),
+  EXA_API_KEY: z.string().min(1).optional(),
   DEFAULT_MODEL: z.string().optional(),
   ALLOWED_MODELS: z.string().optional(),
+  MAX_TOOL_CALLS_PER_RUN: z.coerce.number().int().positive().optional(),
+  MAX_WEB_SEARCHES_PER_RUN: z.coerce.number().int().positive().optional(),
+  MAX_WEB_FETCHES_PER_RUN: z.coerce.number().int().positive().optional(),
+  MAX_WEB_FETCH_BYTES: z.coerce.number().int().positive().optional(),
+  SHOW_TOOL_STATUS_MESSAGES: z
+    .enum(["0", "1", "false", "true"])
+    .optional()
+    .transform((value) => {
+      if (!value) {
+        return true;
+      }
+
+      return value === "1" || value === "true";
+    }),
 });
 
 export interface AppConfig {
@@ -33,8 +48,14 @@ export interface AppConfig {
   openAiApiKey?: string;
   anthropicApiKey?: string;
   openRouterApiKey?: string;
+  exaApiKey?: string;
   allowedModels: QualifiedModelId[];
   defaultModel: QualifiedModelId;
+  maxToolCallsPerRun: number;
+  maxWebSearchesPerRun: number;
+  maxWebFetchesPerRun: number;
+  maxWebFetchBytes: number;
+  showToolStatusMessages: boolean;
 }
 
 export function getConfig(env: EnvBindings): AppConfig {
@@ -92,7 +113,13 @@ export function getConfig(env: EnvBindings): AppConfig {
     openAiApiKey: parsed.OPENAI_API_KEY,
     anthropicApiKey: parsed.ANTHROPIC_API_KEY,
     openRouterApiKey: parsed.OPENROUTER_API_KEY,
+    exaApiKey: parsed.EXA_API_KEY,
     allowedModels,
     defaultModel,
+    maxToolCallsPerRun: parsed.MAX_TOOL_CALLS_PER_RUN ?? 8,
+    maxWebSearchesPerRun: parsed.MAX_WEB_SEARCHES_PER_RUN ?? 2,
+    maxWebFetchesPerRun: parsed.MAX_WEB_FETCHES_PER_RUN ?? 4,
+    maxWebFetchBytes: parsed.MAX_WEB_FETCH_BYTES ?? 250_000,
+    showToolStatusMessages: parsed.SHOW_TOOL_STATUS_MESSAGES,
   };
 }

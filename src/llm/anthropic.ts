@@ -10,6 +10,10 @@ export class AnthropicLlmProvider implements LlmProvider {
     this.anthropic = createAnthropic({ apiKey });
   }
 
+  getModel(model: string) {
+    return this.anthropic(model);
+  }
+
   async respond(input: {
     system: string;
     history: Array<{ role: "system" | "user" | "assistant"; content: string }>;
@@ -20,7 +24,7 @@ export class AnthropicLlmProvider implements LlmProvider {
     usage?: LlmUsage;
   }> {
     const result = await generateText({
-      model: this.anthropic(input.model),
+      model: this.getModel(input.model),
       system: input.system,
       messages: [
         ...input.history.map((item) => ({

@@ -8,8 +8,14 @@ export interface EnvBindings {
   OPENAI_API_KEY?: string;
   ANTHROPIC_API_KEY?: string;
   OPENROUTER_API_KEY?: string;
+  EXA_API_KEY?: string;
   DEFAULT_MODEL?: string;
   ALLOWED_MODELS?: string;
+  MAX_TOOL_CALLS_PER_RUN?: string;
+  MAX_WEB_SEARCHES_PER_RUN?: string;
+  MAX_WEB_FETCHES_PER_RUN?: string;
+  MAX_WEB_FETCH_BYTES?: string;
+  SHOW_TOOL_STATUS_MESSAGES?: string;
 }
 
 export interface ChatRow {
@@ -47,6 +53,68 @@ export interface MessageRow {
   telegram_message_id: number | null;
   role: "user" | "assistant" | "system";
   content_text: string;
+  created_at: string;
+}
+
+export interface AgentRunRow {
+  run_id: string;
+  session_id: string;
+  chat_id: number;
+  reply_to_message_id: number;
+  status: "started" | "waiting_permission" | "waiting_question" | "completed" | "failed";
+  model: string;
+  provider: string;
+  messages_json: string;
+  last_error: string | null;
+  created_at: string;
+  updated_at: string;
+  completed_at: string | null;
+}
+
+export interface ToolCallRow {
+  id: string;
+  run_id: string;
+  tool_name: "web_search" | "web_fetch" | "question" | "datetime";
+  status: "started" | "waiting_permission" | "waiting_user" | "completed" | "failed";
+  input_json: string;
+  output_json: string | null;
+  summary_text: string | null;
+  display_message_id: number | null;
+  error: string | null;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface ToolPermissionRow {
+  id: string;
+  chat_id: number;
+  tool_name: "web_search" | "web_fetch";
+  scope_type: "domain" | "provider";
+  scope_value: string;
+  decision: "allow";
+  created_at: string;
+  updated_at: string;
+}
+
+export interface PendingToolApprovalRow {
+  id: string;
+  run_id: string;
+  tool_call_id: string;
+  chat_id: number;
+  tool_name: "web_search" | "web_fetch";
+  scope_type: "domain" | "provider";
+  scope_value: string;
+  request_json: string;
+  created_at: string;
+}
+
+export interface PendingQuestionRow {
+  id: string;
+  run_id: string;
+  tool_call_id: string;
+  chat_id: number;
+  question_kind: "single_select" | "multi_select" | "free_text" | "confirm";
+  question_json: string;
   created_at: string;
 }
 

@@ -1,5 +1,17 @@
 import { Hono } from "hono";
 
+import {
+  buildInitialRunState,
+  buildQuestionAnswerFromSelection,
+  executeAgentRun,
+  formatQuestionPrompt,
+  parsePendingQuestionState,
+  renderUpdatedQuestion,
+  resumeAgentRunFromApproval,
+  resumeAgentRunFromQuestionAnswer,
+  summarizeQuestionAnswer,
+  updatePendingQuestionState,
+} from "./agent/runtime";
 import { getConfig } from "./config";
 import { Repo } from "./db/repo";
 import {
@@ -12,11 +24,11 @@ import {
 } from "./domain/protocol";
 import { estimateCostUsd, getModelSpec, getModelSpecs } from "./llm/catalog";
 import { LlmRegistry } from "./llm/registry";
-import { getCachedInputTokens } from "./llm/provider";
 import { TelegramClient, type TelegramCommand } from "./telegram/client";
 import { renderTelegramHtml } from "./telegram/format";
 import {
   buildModelKeyboard,
+  buildQuestionKeyboard,
   buildSessionDeleteKeyboard,
   buildSessionKeyboard,
   buildSessionManageKeyboard,
@@ -100,7 +112,7 @@ async function handleUpdate(input: {
   }
 
   if (update.callback_query) {
-    await handleCallback({ callback: update.callback_query, config, repo, telegram });
+    await handleCallback({ callback: update.callback_query, config, repo, telegram, llm });
   }
 }
 
@@ -196,6 +208,42 @@ async function handleMessage(input: {
     return;
   }
 
+  const pendingQuestion = await repo.getPendingQuestionForChat(message.chat.id);
+
+  if (pendingQuestion?.question_kind === "free_text") {
+    const question = parsePendingQuestionState(pendingQuestion);
+    const answer = buildQuestionAnswerFromSelection({
+      question,
+      selectedIndexes: [],
+      freeText: message.text.trim(),
+    });
+
+    if (question.displayMessageId) {
+      await telegram.editMessageText(
+        message.chat.id,
+        question.displayMessageId,
+        renderTelegramHtml(`${formatQuestionPrompt(question)}\n\nGot your answer: ${message.text.trim()}`),
+      );
+    }
+
+    await telegram.sendMessage(message.chat.id, "Got your answer.", {
+      replyToMessageId: message.message_id,
+    });
+
+    const activeRun = await repo.getAgentRun(pendingQuestion.run_id);
+    const activeSession = activeRun ? await repo.getSession(activeRun.session_id) : null;
+
+    if (activeSession) {
+      await resumeAgentRunFromQuestionAnswer({
+        pendingQuestion,
+        answer,
+        services: { config, repo, telegram, llm, systemPrompt: SYSTEM_PROMPT },
+      });
+    }
+
+    return;
+  }
+
   const session = await getOrCreateActiveSession({
     repo,
     chatId: message.chat.id,
@@ -242,59 +290,23 @@ async function handleMessage(input: {
     model: modelSpec.modelId,
     now: now(),
   });
+  const history = await repo.getRecentMessages(session.id, 20);
+  await repo.createAgentRun({
+    runId: run.id,
+    sessionId: session.id,
+    chatId: message.chat.id,
+    replyToMessageId: message.message_id,
+    provider: modelSpec.provider,
+    model: modelSpec.id,
+    messagesJson: JSON.stringify(buildInitialRunState(history)),
+    now: now(),
+  });
 
-  await telegram.sendChatAction(message.chat.id, "typing");
-
-  try {
-    const history = await repo.getRecentMessages(session.id, 20);
-    const response = await llm.respond({
-      system: SYSTEM_PROMPT,
-      history: history
-        .filter((item) => item.role !== "system")
-        .slice(0, -1)
-        .map((item) => ({
-          role: item.role as "user" | "assistant",
-          content: item.content_text,
-        })),
-      message: message.text,
-      model: modelSpec.id,
-    });
-    const cachedInputTokens = getCachedInputTokens(response.usage);
-
-    const sent = await telegram.sendMessage(message.chat.id, renderTelegramHtml(response.text), {
-      replyToMessageId: message.message_id,
-    });
-
-    await repo.appendMessage({
-      id: crypto.randomUUID(),
-      sessionId: session.id,
-      chatId: message.chat.id,
-      telegramMessageId: sent.message_id,
-      role: "assistant",
-      contentText: response.text,
-      now: now(),
-    });
-
-    await repo.completeRun({
-      id: run.id,
-      inputTokens: response.usage?.inputTokens,
-      cachedInputTokens,
-      outputTokens: response.usage?.outputTokens,
-      estimatedCostUsd: estimateCostUsd({
-        modelId: modelSpec.id,
-        inputTokens: response.usage?.inputTokens,
-        cachedInputTokens,
-        outputTokens: response.usage?.outputTokens,
-      }),
-    });
-  } catch (error) {
-    const messageText = error instanceof Error ? error.message : "Unknown model error";
-
-    await repo.failRun(run.id, messageText);
-    await telegram.sendMessage(message.chat.id, "Model request failed. Try again.", {
-      replyToMessageId: message.message_id,
-    });
-  }
+  await executeAgentRun({
+    runId: run.id,
+    session,
+    services: { config, repo, telegram, llm, systemPrompt: SYSTEM_PROMPT },
+  });
 }
 
 async function handleCommand(input: {
@@ -486,8 +498,9 @@ async function handleCallback(input: {
   config: ReturnType<typeof getConfig>;
   repo: Repo;
   telegram: TelegramClient;
+  llm: LlmRegistry;
 }): Promise<void> {
-  const { callback, config, repo, telegram } = input;
+  const { callback, config, repo, telegram, llm } = input;
   const message = callback.message;
 
   if (!message) {
@@ -514,6 +527,122 @@ async function handleCallback(input: {
   }
 
   await repo.ensureChat(message.chat.id, callback.from.id, now());
+  const agentServices = { config, repo, telegram, llm, systemPrompt: SYSTEM_PROMPT };
+
+  if (action.kind === "tool_permission") {
+    const approval = await repo.getPendingToolApproval(action.approvalId);
+
+    if (!approval || approval.chat_id !== message.chat.id) {
+      await telegram.answerCallbackQuery(callback.id, "Permission request not found");
+      return;
+    }
+
+    await telegram.answerCallbackQuery(
+      callback.id,
+      action.decision === "deny" ? "Blocked" : action.decision === "once" ? "Allowed once" : "Allowed",
+    );
+    await resumeAgentRunFromApproval({
+      approval,
+      decision: action.decision,
+      services: agentServices,
+    });
+    return;
+  }
+
+  if (
+    action.kind === "question_select" ||
+    action.kind === "question_toggle" ||
+    action.kind === "question_submit" ||
+    action.kind === "question_cancel"
+  ) {
+    const pendingQuestion = await repo.getPendingQuestion(
+      action.kind === "question_submit" || action.kind === "question_cancel" ? action.questionId : action.questionId,
+    );
+
+    if (!pendingQuestion || pendingQuestion.chat_id !== message.chat.id) {
+      await telegram.answerCallbackQuery(callback.id, "Question not found");
+      return;
+    }
+
+    const state = parsePendingQuestionState(pendingQuestion);
+
+    if (action.kind === "question_cancel") {
+      await telegram.answerCallbackQuery(callback.id, "Canceled");
+      if (state.displayMessageId) {
+        await telegram.editMessageText(
+          message.chat.id,
+          state.displayMessageId,
+          renderTelegramHtml(`${formatQuestionPrompt(state)}\n\nCanceled.`),
+        );
+      }
+      await resumeAgentRunFromQuestionAnswer({
+        pendingQuestion,
+        answer: {
+          prompt: state.prompt,
+          kind: state.kind,
+          values: [],
+          labels: ["Canceled"],
+        },
+        services: agentServices,
+      });
+      return;
+    }
+
+    if (action.kind === "question_toggle") {
+      const selected = new Set(state.selectedIndexes);
+
+      if (selected.has(action.optionIndex)) {
+        selected.delete(action.optionIndex);
+      } else if (selected.size < state.maxSelections) {
+        selected.add(action.optionIndex);
+      }
+
+      state.selectedIndexes = [...selected].sort((a, b) => a - b);
+      await updatePendingQuestionState({
+        row: pendingQuestion,
+        state,
+        services: agentServices,
+      });
+      await renderUpdatedQuestion({
+        row: pendingQuestion,
+        state,
+        services: agentServices,
+      });
+      await telegram.answerCallbackQuery(callback.id, "Updated");
+      return;
+    }
+
+    const selectedIndexes =
+      action.kind === "question_select"
+        ? [action.optionIndex]
+        : state.selectedIndexes;
+
+    if (state.kind === "multi_select" && selectedIndexes.length < state.minSelections) {
+      await telegram.answerCallbackQuery(callback.id, `Pick at least ${state.minSelections}`);
+      return;
+    }
+
+    const answer = buildQuestionAnswerFromSelection({
+      question: state,
+      selectedIndexes,
+    });
+
+    await telegram.answerCallbackQuery(callback.id, "Got it");
+    if (state.displayMessageId) {
+      await telegram.editMessageText(
+        message.chat.id,
+        state.displayMessageId,
+        renderTelegramHtml(`${formatQuestionPrompt(state)}\n\nGot your answer: ${summarizeQuestionAnswer(answer)}`),
+      );
+    }
+
+    await resumeAgentRunFromQuestionAnswer({
+      pendingQuestion,
+      answer,
+      services: agentServices,
+    });
+    return;
+  }
 
   if (action.kind === "command") {
     await telegram.answerCallbackQuery(callback.id);

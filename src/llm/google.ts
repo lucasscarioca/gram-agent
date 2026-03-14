@@ -10,6 +10,10 @@ export class GoogleLlmProvider implements LlmProvider {
     this.google = createGoogleGenerativeAI({ apiKey });
   }
 
+  getModel(model: string) {
+    return this.google(model);
+  }
+
   async respond(input: {
     system: string;
     history: Array<{ role: "system" | "user" | "assistant"; content: string }>;
@@ -31,7 +35,7 @@ export class GoogleLlmProvider implements LlmProvider {
     ];
 
     const result = await generateText({
-      model: this.google(input.model),
+      model: this.getModel(input.model),
       system: input.system,
       messages,
     });

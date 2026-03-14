@@ -19,7 +19,12 @@ export type CallbackAction =
   | { kind: "session_delete"; sessionId: string }
   | { kind: "session_delete_confirm"; sessionId: string }
   | { kind: "session_delete_cancel"; sessionId: string }
-  | { kind: "model"; modelId: string };
+  | { kind: "model"; modelId: string }
+  | { kind: "tool_permission"; decision: "deny" | "once" | "always"; approvalId: string }
+  | { kind: "question_select"; questionId: string; optionIndex: number }
+  | { kind: "question_toggle"; questionId: string; optionIndex: number }
+  | { kind: "question_submit"; questionId: string }
+  | { kind: "question_cancel"; questionId: string };
 
 export function parseCommand(text: string): SupportedCommand | null {
   if (!text.startsWith("/")) {
@@ -84,6 +89,45 @@ export function parseCallbackAction(data: string | undefined): CallbackAction | 
   if (data.startsWith("model:")) {
     const modelId = data.slice("model:".length);
     return modelId ? { kind: "model", modelId } : null;
+  }
+
+  if (data.startsWith("tpd:")) {
+    const approvalId = data.slice("tpd:".length);
+    return approvalId ? { kind: "tool_permission", decision: "deny", approvalId } : null;
+  }
+
+  if (data.startsWith("tpo:")) {
+    const approvalId = data.slice("tpo:".length);
+    return approvalId ? { kind: "tool_permission", decision: "once", approvalId } : null;
+  }
+
+  if (data.startsWith("tpa:")) {
+    const approvalId = data.slice("tpa:".length);
+    return approvalId ? { kind: "tool_permission", decision: "always", approvalId } : null;
+  }
+
+  if (data.startsWith("qsel:")) {
+    const [questionId, optionIndex] = data.slice("qsel:".length).split(":");
+    return questionId && optionIndex !== undefined && Number.isInteger(Number(optionIndex))
+      ? { kind: "question_select", questionId, optionIndex: Number(optionIndex) }
+      : null;
+  }
+
+  if (data.startsWith("qtog:")) {
+    const [questionId, optionIndex] = data.slice("qtog:".length).split(":");
+    return questionId && optionIndex !== undefined && Number.isInteger(Number(optionIndex))
+      ? { kind: "question_toggle", questionId, optionIndex: Number(optionIndex) }
+      : null;
+  }
+
+  if (data.startsWith("qsub:")) {
+    const questionId = data.slice("qsub:".length);
+    return questionId ? { kind: "question_submit", questionId } : null;
+  }
+
+  if (data.startsWith("qcan:")) {
+    const questionId = data.slice("qcan:".length);
+    return questionId ? { kind: "question_cancel", questionId } : null;
   }
 
   return null;

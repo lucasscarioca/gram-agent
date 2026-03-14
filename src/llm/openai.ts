@@ -10,6 +10,10 @@ export class OpenAiLlmProvider implements LlmProvider {
     this.openai = createOpenAI({ apiKey });
   }
 
+  getModel(model: string) {
+    return this.openai(model);
+  }
+
   async respond(input: {
     system: string;
     history: Array<{ role: "system" | "user" | "assistant"; content: string }>;
@@ -20,7 +24,7 @@ export class OpenAiLlmProvider implements LlmProvider {
     usage?: LlmUsage;
   }> {
     const result = await generateText({
-      model: this.openai(input.model),
+      model: this.getModel(input.model),
       system: input.system,
       messages: [
         ...input.history.map((item) => ({
