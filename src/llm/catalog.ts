@@ -18,6 +18,21 @@ export interface ModelSpec {
   modelId: string;
   label: string;
   pricing: ModelPricing;
+  contextWindowTokens?: number;
+  supportsVisionInput?: boolean;
+  supportsAudioInput?: boolean;
+}
+
+export type QualifiedTranscriptionModelId = `google:${string}` | `openai:${string}`;
+
+export type TranscriptionModelInputMethod = "native_transcription" | "audio_file_prompt";
+
+export interface TranscriptionModelSpec {
+  id: QualifiedTranscriptionModelId;
+  provider: ProviderId;
+  modelId: string;
+  label: string;
+  inputMethod: TranscriptionModelInputMethod;
 }
 
 const MODEL_SPECS = [
@@ -31,6 +46,9 @@ const MODEL_SPECS = [
       cachedInputPerMillionUsd: 0.075,
       outputPerMillionUsd: 2.5,
     },
+    contextWindowTokens: 1_000_000,
+    supportsVisionInput: true,
+    supportsAudioInput: true,
   },
   {
     id: "google:gemini-2.5-pro",
@@ -42,6 +60,8 @@ const MODEL_SPECS = [
       cachedInputPerMillionUsd: 0.3125,
       outputPerMillionUsd: 10,
     },
+    contextWindowTokens: 1_000_000,
+    supportsVisionInput: true,
   },
   {
     id: "google:gemini-3-flash-preview",
@@ -53,6 +73,8 @@ const MODEL_SPECS = [
       cachedInputPerMillionUsd: 0.075,
       outputPerMillionUsd: 2.5,
     },
+    contextWindowTokens: 1_000_000,
+    supportsVisionInput: true,
   },
   {
     id: "google:gemini-3-pro-preview",
@@ -64,6 +86,8 @@ const MODEL_SPECS = [
       cachedInputPerMillionUsd: 0.3125,
       outputPerMillionUsd: 10,
     },
+    contextWindowTokens: 1_000_000,
+    supportsVisionInput: true,
   },
   {
     id: "openai:gpt-5.1",
@@ -75,6 +99,8 @@ const MODEL_SPECS = [
       cachedInputPerMillionUsd: 0.125,
       outputPerMillionUsd: 10,
     },
+    contextWindowTokens: 400_000,
+    supportsVisionInput: true,
   },
   {
     id: "openai:gpt-5-mini",
@@ -86,6 +112,8 @@ const MODEL_SPECS = [
       cachedInputPerMillionUsd: 0.025,
       outputPerMillionUsd: 2,
     },
+    contextWindowTokens: 400_000,
+    supportsVisionInput: true,
   },
   {
     id: "openai:gpt-5-nano",
@@ -97,6 +125,8 @@ const MODEL_SPECS = [
       cachedInputPerMillionUsd: 0.005,
       outputPerMillionUsd: 0.4,
     },
+    contextWindowTokens: 400_000,
+    supportsVisionInput: true,
   },
   {
     id: "anthropic:claude-opus-4-6",
@@ -108,6 +138,8 @@ const MODEL_SPECS = [
       cachedInputPerMillionUsd: 1.5,
       outputPerMillionUsd: 75,
     },
+    contextWindowTokens: 200_000,
+    supportsVisionInput: true,
   },
   {
     id: "anthropic:claude-sonnet-4-5",
@@ -119,6 +151,8 @@ const MODEL_SPECS = [
       cachedInputPerMillionUsd: 0.3,
       outputPerMillionUsd: 15,
     },
+    contextWindowTokens: 200_000,
+    supportsVisionInput: true,
   },
   {
     id: "anthropic:claude-haiku-4-5",
@@ -130,6 +164,8 @@ const MODEL_SPECS = [
       cachedInputPerMillionUsd: 0.1,
       outputPerMillionUsd: 5,
     },
+    contextWindowTokens: 200_000,
+    supportsVisionInput: true,
   },
   {
     id: "openrouter:minimax/minimax-m2.5",
@@ -177,7 +213,43 @@ const MODEL_SPEC_MAP = new Map<QualifiedModelId, ModelSpec>(
   MODEL_SPECS.map((model) => [model.id, model]),
 );
 
+const TRANSCRIPTION_MODEL_SPECS = [
+  {
+    id: "google:gemini-2.5-flash",
+    provider: "google",
+    modelId: "gemini-2.5-flash",
+    label: "Google / Gemini 2.5 Flash",
+    inputMethod: "audio_file_prompt",
+  },
+  {
+    id: "openai:whisper-1",
+    provider: "openai",
+    modelId: "whisper-1",
+    label: "OpenAI / Whisper-1",
+    inputMethod: "native_transcription",
+  },
+] as const satisfies readonly TranscriptionModelSpec[];
+
+const TRANSCRIPTION_MODEL_SPEC_MAP = new Map<QualifiedTranscriptionModelId, TranscriptionModelSpec>(
+  TRANSCRIPTION_MODEL_SPECS.map((model) => [model.id, model]),
+);
+
 export const BUILTIN_MODEL_IDS = MODEL_SPECS.map((model) => model.id);
+export const BUILTIN_TRANSCRIPTION_MODEL_IDS = TRANSCRIPTION_MODEL_SPECS.map((model) => model.id);
+
+export function getVisionCapableModels(modelIds: QualifiedModelId[]): ModelSpec[] {
+  return getModelSpecs(modelIds).filter((model) => model.supportsVisionInput);
+}
+
+export function getTranscriptionModelSpec(modelId: string): TranscriptionModelSpec | null {
+  return TRANSCRIPTION_MODEL_SPEC_MAP.get(modelId as QualifiedTranscriptionModelId) ?? null;
+}
+
+export function getTranscriptionModelSpecs(modelIds: QualifiedTranscriptionModelId[]): TranscriptionModelSpec[] {
+  return modelIds
+    .map((modelId) => getTranscriptionModelSpec(modelId))
+    .filter((model): model is TranscriptionModelSpec => model !== null);
+}
 
 export function parseQualifiedModelId(value: string): {
   provider: ProviderId;
@@ -252,6 +324,10 @@ export function estimateCostUsd(input: {
   const outputCost = (outputTokens / 1_000_000) * spec.pricing.outputPerMillionUsd;
 
   return roundUsd(inputCost + cachedCost + outputCost);
+}
+
+export function getContextWindowTokens(modelId: string, fallback: number): number {
+  return getModelSpec(modelId)?.contextWindowTokens ?? fallback;
 }
 
 function roundUsd(value: number): number {

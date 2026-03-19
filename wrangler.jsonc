@@ -7,10 +7,18 @@
 	"name": "gram",
 	"main": "src/index.ts",
 	"compatibility_date": "2025-09-27",
-	// "assets": {
-	// 	"binding": "ASSETS",
-	// 	"directory": "./public"
-	// },
+	"build": {
+		"command": "pnpm run build:admin",
+		"watch_dir": [
+			"app",
+			"vite.config.ts"
+		]
+	},
+	"assets": {
+		"binding": "ASSETS",
+		"directory": "./admin-dist",
+		"run_worker_first": true
+	},
 	"observability": {
 		"enabled": true
 	},
@@ -19,7 +27,8 @@
 	],
 	"vars": {
 		"DEFAULT_MODEL": "google:gemini-2.5-flash",
-		"ALLOWED_MODELS": "google:gemini-2.5-flash,google:gemini-2.5-pro,google:gemini-3-flash-preview,google:gemini-3-pro-preview"
+		"ALLOWED_MODELS": "google:gemini-2.5-flash,google:gemini-2.5-pro,google:gemini-3-flash-preview,google:gemini-3-pro-preview",
+		"ADMIN_ENABLED": "0"
 	},
 	"d1_databases": [
 		{

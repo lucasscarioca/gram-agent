@@ -1,5 +1,32 @@
 # Changelog
 
+## v0.9.0
+
+Adds:
+
+- token-aware session context management with a default `290k` window and optional per-model overrides
+- durable session memory compaction with automatic warnings, automatic compaction before oversized runs, and manual `/compact`
+- status visibility for current context usage and saved compaction state
+- D1-backed persistent memory with `/remember`, `/memories`, `/forget`, and bounded prompt injection across sessions
+- status visibility for saved persistent memory count
+- Telegram-safe `/help` rendering so command args like `<title>` no longer fail under HTML parse mode
+- broader pragmatic test coverage for webhook routing, runtime resume flows, repo lifecycle, Telegram clients/keyboards, search, and web fetch behavior
+- Vitest coverage reporting via `pnpm run test:coverage`, plus CI for typecheck and tests
+- cleanup for stale free-text question state, invalid question option callbacks, and broader private-network URL blocking
+- private `/admin` monitoring console served from Worker assets with a responsive React SPA tuned for desktop and mobile
+- Cloudflare Access protected `/admin/*` routes with in-Worker JWT validation for the admin dashboard and API
+- dashboard read models for overview, sessions, runs, pending approvals/questions, memories, and saved tool permissions
+- Telegram `/dashboard` command for jumping from chat into the admin console
+- custom-domain-oriented docs for WAF hardening on the webhook path and Access protection on the admin path
+- production fixes for custom-domain admin routing, asset-path handling, and Access compatibility on `/admin` and `/admin/`
+- refreshed admin console palette plus a public root landing page that points to the `gram-agent` GitHub starter
+- multimodal input v1 for Telegram with photo vision, audio transcription, and file/PDF text extraction
+- Gemini-backed audio transcription so Telegram voice/audio works without an OpenAI key
+- chat-level default vision/transcription model settings via Telegram `/settings` and the admin dashboard
+- transient media processing with structured derived-message metadata, provenance-aware replay, and no raw asset storage
+- explicit disabled paths for unconfigured vision/audio processing and scanned PDFs without extractable text
+- admin dashboard commands and help text now stay hidden unless the admin feature flag is fully configured
+
 ## v0.3.0
 
 Adds:

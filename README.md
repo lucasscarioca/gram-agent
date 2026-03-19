@@ -2,30 +2,28 @@
 
 [![Deploy to Cloudflare](https://deploy.workers.cloudflare.com/button)](https://deploy.workers.cloudflare.com/?url=https://github.com/lucasscarioca/gram-agent)
 
-Minimal starter for building personal, Telegram-first agents on Cloudflare Workers.
+Telegram-first personal agent starter for Cloudflare Workers.
 
-This project is intentionally small. It is a private-bot starter, not a SaaS product and not a full agent framework.
+`gram-agent` is intentionally focused:
 
-## Versioning
+- private bot, not SaaS
+- Telegram as the primary interface
+- Cloudflare Workers + D1 as the default runtime
+- built-in agent patterns without trying to be a full framework
 
-This template uses lightweight `0.x` releases.
+## Highlights
 
-- `main` keeps moving
-- tags/releases mark stable starter milestones
-- breaking changes are acceptable while the project is still in `0.x`
+- Telegram webhook bot built with Hono
+- D1-backed sessions, messages, runs, pending work, and persistent memories
+- built-in model support for Google, OpenAI, Anthropic, and OpenRouter
+- Telegram-native controls with slash commands and inline keyboards
+- token-aware context management with warnings and durable session compaction
+- persistent memory with `/remember`, `/memories`, and `/forget`
+- multimodal preprocessing for images, audio, files, and PDFs
+- optional private admin dashboard at `/admin`
+- Cloudflare Access-ready admin protection and custom-domain WAF guidance for the Telegram webhook
 
-If you build your own bot from this template, create your own repo and treat the tagged releases as safe starting points.
-
-## What this gives you
-
-- Telegram webhook bot on Cloudflare Workers
-- Hono app skeleton
-- D1-backed chat sessions
-- AI SDK integration
-- single-user allowlist by Telegram user/chat ID
-- Telegram-first session controls with slash commands and contextual inline pickers
-
-Built-in commands:
+## Commands
 
 - `/help`
 - `/new`
@@ -36,262 +34,62 @@ Built-in commands:
 - `/cancel`
 - `/status`
 - `/analytics`
+- `/compact`
+- `/remember`
+- `/memories`
+- `/forget`
+- `/settings`
+- `/dashboard` when admin is fully configured
 
-## Architecture
+## Dashboard
 
-Flow:
+The admin dashboard is optional and feature-flagged.
 
-1. Telegram sends updates to the Worker webhook.
-2. The Worker verifies the webhook path and Telegram secret header.
-3. The Worker ignores all senders except the configured Telegram user/chat.
-4. D1 stores sessions, messages, and run metadata.
-5. AI SDK calls the configured model provider.
-6. The bot replies in Telegram with normal chat messages, while commands and pickers handle session management.
+- SPA served from the same Worker
+- overview, sessions, runs, pending work, memories, and saved tool permissions
+- designed for Cloudflare Access on `/admin/*`
+- recommended on a custom domain, not `workers.dev`
 
-The point is to keep the interface Telegram-native:
+## Security model
 
-- chat is the primary UX
-- sessions are explicit
-- Telegram's command menu is the default control surface
-- inline keyboards appear for session and model selection, including session management actions
-
-## Security and cost
-
-Already in place:
+Base protections:
 
 - secret webhook path
 - Telegram `X-Telegram-Bot-Api-Secret-Token` verification
 - allowlist by Telegram user ID
 - optional allowlist by Telegram chat ID
-- restricted `allowed_updates`
 
-That is enough for a personal POC and stops unauthorized use of the bot logic.
+Recommended hardened deployment:
 
-What is **not** in place by default on `workers.dev`:
+- `/webhooks/telegram/*` public to Telegram, protected with WAF on a custom domain
+- `/admin/*` private to you, protected with Cloudflare Access
 
-- Cloudflare WAF in front of the Worker
-
-Why:
-
-- WAF custom rules sit on a Cloudflare zone/custom domain
-- `workers.dev` is great for quick setup, but not for pre-Worker filtering
-
-Recommended hardening for better abuse resistance and lower cost:
-
-1. Move the Worker to a custom domain on a zone you control.
-2. Add a WAF custom rule for the webhook path.
-3. Block requests with missing `x-telegram-bot-api-secret-token`.
-4. Block requests whose header value does not match your webhook secret.
-
-That is the best way to cut abusive traffic before it reaches your Worker.
+Do not put Cloudflare Access on the Telegram webhook path.
 
 ## Quick start
 
-### Option A: Deploy button
-
-Use the button at the top of this README to bootstrap the project into your Cloudflare account.
-
-After that, you still need to:
-
-- create/bind D1 if the button flow did not provision it
-- apply the schema if this is a fresh database
-- apply migrations when upgrading an existing deployment
-- register the Telegram webhook
-
-### Option B: Manual setup
-
-#### 1. Clone and install
-
 ```bash
 pnpm install
-```
-
-If you want local secret placeholders, copy values from `.dev.vars.example` into your own `.dev.vars`.
-
-#### 2. Create a Telegram bot
-
-Use `@BotFather`:
-
-1. Run `/newbot`
-2. Choose a bot name
-3. Copy the bot token
-
-#### 3. Find your Telegram user ID and chat ID
-
-Send a message to your bot and inspect the webhook payload, or use a helper bot like `@userinfobot`.
-
-For a direct private chat:
-
-- `message.from.id` is your user ID
-- `message.chat.id` is your chat ID
-
-These values are often the same in a 1:1 bot chat, but not always.
-
-#### 4. Create D1
-
-```bash
-pnpm exec wrangler d1 create gram
-```
-
-Copy the returned `database_id` into [wrangler.jsonc](/home/lucas/dev/projects/gram/wrangler.jsonc).
-
-#### 5. Apply the schema
-
-Local:
-
-```bash
 pnpm run db:setup:local
-```
-
-Remote:
-
-```bash
-pnpm run db:setup:remote
-```
-
-These setup commands also stamp the current migration files into `d1_migrations`
-so future upgrade runs stay in sync with the schema snapshot.
-
-#### 5b. Apply migrations for upgrades
-
-Use this only when upgrading an existing database after pulling newer changes.
-Do not use migrations to create the initial schema from scratch.
-
-Check database health first:
-
-Local:
-
-```bash
-pnpm run db:doctor:local
-```
-
-Remote:
-
-```bash
-pnpm run db:doctor:remote
-```
-
-Then apply migrations:
-
-Local:
-
-```bash
-pnpm run db:migrate:local
-```
-
-Remote:
-
-```bash
-pnpm run db:migrate:remote
-```
-
-#### 6. Set Worker secrets
-
-```bash
-pnpm exec wrangler secret put TELEGRAM_BOT_TOKEN
-pnpm exec wrangler secret put TELEGRAM_WEBHOOK_SECRET
-pnpm exec wrangler secret put ALLOWED_TELEGRAM_USER_ID
-pnpm exec wrangler secret put ALLOWED_CHAT_ID
-pnpm exec wrangler secret put GOOGLE_GENERATIVE_AI_API_KEY
-pnpm exec wrangler secret put OPENAI_API_KEY
-pnpm exec wrangler secret put ANTHROPIC_API_KEY
-pnpm exec wrangler secret put OPENROUTER_API_KEY
-pnpm exec wrangler secret put EXA_API_KEY
-```
-
-Generate `TELEGRAM_WEBHOOK_SECRET` with something like:
-
-```bash
-openssl rand -hex 32
-```
-
-#### 7. Deploy
-
-```bash
-pnpm run deploy
-```
-
-This runs remote D1 migrations before deploying the Worker.
-
-#### 8. Register the Telegram webhook
-
-Use the same secret in the path and in `secret_token`:
-
-```bash
-curl -X POST "https://api.telegram.org/bot<TELEGRAM_BOT_TOKEN>/setWebhook" \
-  -H "content-type: application/json" \
-  -d '{
-    "url": "https://<your-worker-domain>/webhooks/telegram/<TELEGRAM_WEBHOOK_SECRET>",
-    "secret_token": "<TELEGRAM_WEBHOOK_SECRET>",
-    "allowed_updates": ["message", "callback_query"]
-  }'
-```
-
-Verify:
-
-```bash
-curl "https://api.telegram.org/bot<TELEGRAM_BOT_TOKEN>/getWebhookInfo"
-```
-
-## Local development
-
-```bash
 pnpm run dev
 ```
 
-Checks:
+Before deploying, you will still need to:
 
-```bash
-pnpm run typecheck
-pnpm run test
-pnpm run cf-typegen
-```
+- create a Telegram bot
+- set Worker secrets
+- create and bind D1
+- register the Telegram webhook
 
-## Provider setup
+## Docs
 
-Built-in provider support:
-
-- Google Gemini
-- OpenAI
-- Anthropic
-- OpenRouter
-
-Built-in tools:
-
-- `datetime`
-- `question`
-- `web_search` via Exa
-- `web_fetch` via native Worker fetch with per-domain approval
-
-Built-in models use `provider:model` ids, for example:
-
-- `google:gemini-2.5-flash`
-- `google:gemini-3-pro-preview`
-- `openai:gpt-5.1`
-- `anthropic:claude-sonnet-4-5`
-- `openrouter:openai/gpt-oss-120b`
-
-Only models whose provider API key is configured are shown in `/model`.
-
-Analytics:
-
-- completed runs store input tokens, cached input tokens, output tokens, and estimated cost
-- `/status` shows current session totals plus global totals
-- `/analytics` shows totals for today, 7d, 30d, and all time
+- setup and deployment: [`README.md`](README.md)
+- admin dashboard: [`docs/admin-dashboard.md`](docs/admin-dashboard.md)
+- security hardening, Access, and WAF: [`docs/security-hardening.md`](docs/security-hardening.md)
+- release history: [`CHANGELOG.md`](CHANGELOG.md)
 
 ## Notes
 
-- `wrangler.jsonc` intentionally uses a placeholder D1 database ID in git.
-- `db/schema.sql` is for fresh databases; upgrades should use `db/migrations/`.
-- Fresh setup:
-  `pnpm run db:setup:local` or `pnpm run db:setup:remote`
-- Schema-based setup also records the current migration files with
-  `db:stamp:local` or `db:stamp:remote`
-- Upgrades:
-  `pnpm run db:doctor:local` or `pnpm run db:doctor:remote`, then
-  `pnpm run db:migrate:local` or `pnpm run db:migrate:remote`
-- Add a new numbered SQL file in `db/migrations/` for every schema change after initial setup.
-- `db:migrate:*` now runs `db:doctor:*` first and fails fast on schema/ledger drift.
-- If a schema change was applied manually, reconcile `d1_migrations` before running Wrangler migrations again.
-- Future versions can add more built-in features, but the goal is to keep this starter lightweight.
-- See [CHANGELOG.md](./CHANGELOG.md) for tagged starter milestones.
+- `workers.dev` is fine for quick bot-only setups
+- use a custom domain for the recommended webhook WAF + dashboard Access setup
+- raw Telegram media is not stored; only derived text and metadata are persisted for multimodal preprocessing

@@ -1,0 +1,80 @@
+@import "tailwindcss";
+
+:root {
+  --bg: #0d1110;
+  --bg-soft: #131917;
+  --panel: #171f1c;
+  --panel-strong: #1d2723;
+  --foreground: #eef5f0;
+  --muted-foreground: #97a79e;
+  --border: rgba(255, 255, 255, 0.06);
+  --border-strong: rgba(255, 255, 255, 0.12);
+  --accent: #8fd66a;
+  --accent-2: #b6ee8f;
+  --accent-3: #e8efe9;
+  --accent-foreground: #0d140f;
+  --accent-soft: rgba(143, 214, 106, 0.1);
+  --accent-border: rgba(143, 214, 106, 0.22);
+  --accent-border-strong: rgba(143, 214, 106, 0.32);
+  --accent-glow: rgba(143, 214, 106, 0.16);
+  --danger-soft: rgba(182, 238, 143, 0.1);
+  --danger-soft-strong: rgba(182, 238, 143, 0.14);
+  --danger-border: rgba(182, 238, 143, 0.18);
+  --danger-border-strong: rgba(182, 238, 143, 0.24);
+  --neutral-soft: rgba(232, 239, 233, 0.06);
+  --neutral-border: rgba(232, 239, 233, 0.12);
+  --success: #8fd66a;
+  --danger: #b6ee8f;
+  --ring: rgba(143, 214, 106, 0.36);
+  --font-display: "IBM Plex Sans", "Avenir Next", "Segoe UI", sans-serif;
+  --font-body: "IBM Plex Sans", "Avenir Next", "Segoe UI", sans-serif;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+html {
+  background: var(--bg);
+  color: var(--foreground);
+  color-scheme: dark;
+}
+
+body {
+  margin: 0;
+  font-family: var(--font-body);
+  background:
+    radial-gradient(circle at top left, rgba(143, 214, 106, 0.08), transparent 20%),
+    radial-gradient(circle at 88% 14%, rgba(182, 238, 143, 0.06), transparent 18%),
+    linear-gradient(180deg, #101513, #0d1110 46%, #0a0d0c 100%);
+  color: var(--foreground);
+}
+
+#root {
+  min-height: 100vh;
+}
+
+button,
+input,
+textarea,
+select {
+  font: inherit;
+}
+
+select {
+  color: var(--foreground);
+  background-color: rgba(243, 245, 251, 0.03);
+}
+
+select option {
+  color: var(--foreground);
+  background: var(--panel-strong);
+}
+
+a {
+  color: inherit;
+}
+
+::selection {
+  background: rgba(143, 214, 106, 0.22);
+}

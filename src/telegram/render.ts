@@ -1,6 +1,7 @@
 import type { ModelSpec } from "../llm/catalog";
 import type { PendingApprovalRequest, QuestionState } from "../agent/types";
-import type { SessionRow } from "../types";
+import type { MemoryRow, SessionRow } from "../types";
+import type { TranscriptionModelSpec } from "../llm/catalog";
 
 import type { InlineKeyboardButton } from "./client";
 
@@ -87,6 +88,44 @@ export function buildQuestionKeyboard(question: QuestionState): InlineKeyboardBu
     }),
     [{ text: question.submitLabel ?? "Submit", callback_data: `qsub:${question.id}` }],
     [{ text: question.cancelLabel ?? "Cancel", callback_data: `qcan:${question.id}` }],
+  ];
+}
+
+export function buildMemoryKeyboard(memories: MemoryRow[]): InlineKeyboardButton[][] {
+  return memories.map((memory, index) => [{ text: `Forget ${index + 1}`, callback_data: `mforget:${memory.id}` }]);
+}
+
+export function buildSettingsKeyboard(): InlineKeyboardButton[][] {
+  return [
+    [{ text: "Vision model", callback_data: "settings_vision" }],
+    [{ text: "Transcription model", callback_data: "settings_transcription" }],
+  ];
+}
+
+export function buildVisionModelKeyboard(models: ModelSpec[], currentModel: string | null): InlineKeyboardButton[][] {
+  return [
+    ...models.map((model) => [
+      {
+        text: model.id === currentModel ? `[current] ${model.label}` : model.label,
+        callback_data: `settings_vision_set:${model.id}`,
+      },
+    ]),
+    [{ text: currentModel ? "Clear vision model" : "Vision disabled", callback_data: "settings_vision_clear" }],
+  ];
+}
+
+export function buildTranscriptionModelKeyboard(
+  models: TranscriptionModelSpec[],
+  currentModel: string | null,
+): InlineKeyboardButton[][] {
+  return [
+    ...models.map((model) => [
+      {
+        text: model.id === currentModel ? `[current] ${model.label}` : model.label,
+        callback_data: `settings_transcription_set:${model.id}`,
+      },
+    ]),
+    [{ text: currentModel ? "Clear transcription" : "Transcription disabled", callback_data: "settings_transcription_clear" }],
   ];
 }
 

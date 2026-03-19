@@ -18,6 +18,11 @@ describe("parseCommand", () => {
     expect(parseCommand("/cancel")).toBe("cancel");
     expect(parseCommand("/status")).toBe("status");
     expect(parseCommand("/analytics")).toBe("analytics");
+    expect(parseCommand("/compact")).toBe("compact");
+    expect(parseCommand("/remember use pnpm")).toBe("remember");
+    expect(parseCommand("/memories")).toBe("memories");
+    expect(parseCommand("/forget")).toBe("forget");
+    expect(parseCommand("/dashboard")).toBe("dashboard");
     expect(parseCommand("hello")).toBeNull();
   });
 });
@@ -91,6 +96,10 @@ describe("parseCallbackAction", () => {
     expect(parseCallbackAction("qcan:q1")).toEqual({
       kind: "question_cancel",
       questionId: "q1",
+    });
+    expect(parseCallbackAction("mforget:mem1")).toEqual({
+      kind: "memory_forget",
+      memoryId: "mem1",
     });
   });
 });

@@ -1,14 +1,25 @@
 import type {
   AgentRunRow,
+  AdminBootstrap,
   ChatRow,
+  DailyUsageRow,
   GroupedUsageRow,
+  MemoryRow,
   MessageRow,
+  PendingApprovalListItem,
   PendingChatActionRow,
+  PendingQuestionListItem,
   PendingQuestionRow,
   PendingToolApprovalRow,
   RunRow,
+  RunListItem,
+  RunDetail,
+  SessionDetail,
+  SessionListItem,
   SessionRow,
   ToolCallRow,
+  ToolCallListItem,
+  ToolPermissionListItem,
   ToolPermissionRow,
   UsageTotalsRow,
 } from "../types";
@@ -16,12 +27,141 @@ import type {
 export class Repo {
   constructor(private readonly db: D1Database) {}
 
+  async createMemory(input: {
+    id: string;
+    userId: number;
+    chatId: number;
+    scope: MemoryRow["scope"];
+    kind: MemoryRow["kind"];
+    contentText: string;
+    sourceSessionId?: string | null;
+    now: string;
+  }): Promise<void> {
+    await this.db
+      .prepare(
+        `
+          INSERT INTO memories (
+            id,
+            user_id,
+            chat_id,
+            scope,
+            kind,
+            content_text,
+            status,
+            source_session_id,
+            created_at,
+            updated_at,
+            last_used_at
+          )
+          VALUES (?, ?, ?, ?, ?, ?, 'active', ?, ?, ?, NULL)
+        `,
+      )
+      .bind(
+        input.id,
+        input.userId,
+        input.chatId,
+        input.scope,
+        input.kind,
+        input.contentText,
+        input.sourceSessionId ?? null,
+        input.now,
+        input.now,
+      )
+      .run();
+  }
+
+  async listActiveMemoriesForChat(chatId: number, limit = 20): Promise<MemoryRow[]> {
+    const result = await this.db
+      .prepare(
+        `
+          SELECT
+            id,
+            user_id,
+            chat_id,
+            scope,
+            kind,
+            content_text,
+            status,
+            source_session_id,
+            created_at,
+            updated_at,
+            last_used_at
+          FROM memories
+          WHERE chat_id = ?
+            AND status = 'active'
+          ORDER BY updated_at DESC, created_at DESC
+          LIMIT ?
+        `,
+      )
+      .bind(chatId, limit)
+      .all<MemoryRow>();
+
+    return result.results ?? [];
+  }
+
+  async getMemory(memoryId: string): Promise<MemoryRow | null> {
+    const row = await this.db
+      .prepare(
+        `
+          SELECT
+            id,
+            user_id,
+            chat_id,
+            scope,
+            kind,
+            content_text,
+            status,
+            source_session_id,
+            created_at,
+            updated_at,
+            last_used_at
+          FROM memories
+          WHERE id = ?
+        `,
+      )
+      .bind(memoryId)
+      .first<MemoryRow>();
+
+    return row ?? null;
+  }
+
+  async archiveMemory(memoryId: string, chatId: number, now: string): Promise<void> {
+    await this.db
+      .prepare(
+        `
+          UPDATE memories
+          SET status = 'archived', updated_at = ?
+          WHERE id = ?
+            AND chat_id = ?
+        `,
+      )
+      .bind(now, memoryId, chatId)
+      .run();
+  }
+
+  async countActiveMemoriesForChat(chatId: number): Promise<number> {
+    const row = await this.db
+      .prepare(`SELECT COUNT(*) AS count FROM memories WHERE chat_id = ? AND status = 'active'`)
+      .bind(chatId)
+      .first<{ count: number | string }>();
+
+    return Number(row?.count ?? 0);
+  }
+
   async ensureChat(chatId: number, userId: number, now: string): Promise<void> {
     await this.db
       .prepare(
         `
-          INSERT INTO chats (chat_id, user_id, active_session_id, created_at, updated_at)
-          VALUES (?, ?, NULL, ?, ?)
+          INSERT INTO chats (
+            chat_id,
+            user_id,
+            active_session_id,
+            default_vision_model,
+            default_transcription_model,
+            created_at,
+            updated_at
+          )
+          VALUES (?, ?, NULL, NULL, NULL, ?, ?)
           ON CONFLICT(chat_id) DO UPDATE SET
             user_id = excluded.user_id,
             updated_at = excluded.updated_at
@@ -35,7 +175,14 @@ export class Repo {
     const row = await this.db
       .prepare(
         `
-          SELECT chat_id, user_id, active_session_id, created_at, updated_at
+          SELECT
+            chat_id,
+            user_id,
+            active_session_id,
+            default_vision_model,
+            default_transcription_model,
+            created_at,
+            updated_at
           FROM chats
           WHERE chat_id = ?
         `,
@@ -59,6 +206,10 @@ export class Repo {
             title_updated_at,
             last_auto_title_message_count,
             selected_model,
+            compacted_summary,
+            compacted_at,
+            last_compacted_message_id,
+            last_context_warning_at,
             created_at,
             last_message_at
           FROM sessions
@@ -92,10 +243,14 @@ export class Repo {
             title_updated_at,
             last_auto_title_message_count,
             selected_model,
+            compacted_summary,
+            compacted_at,
+            last_compacted_message_id,
+            last_context_warning_at,
             created_at,
             last_message_at
           )
-          VALUES (?, ?, ?, ?, ?, ?, 0, ?, ?, ?)
+          VALUES (?, ?, ?, ?, ?, ?, 0, ?, NULL, NULL, NULL, NULL, ?, ?)
         `,
       )
       .bind(
@@ -122,6 +277,10 @@ export class Repo {
       title_updated_at: input.now,
       last_auto_title_message_count: 0,
       selected_model: input.selectedModel,
+      compacted_summary: null,
+      compacted_at: null,
+      last_compacted_message_id: null,
+      last_context_warning_at: null,
       created_at: input.now,
       last_message_at: input.now,
     };
@@ -140,6 +299,32 @@ export class Repo {
       .run();
   }
 
+  async updateChatVisionModel(chatId: number, modelId: string | null, now: string): Promise<void> {
+    await this.db
+      .prepare(
+        `
+          UPDATE chats
+          SET default_vision_model = ?, updated_at = ?
+          WHERE chat_id = ?
+        `,
+      )
+      .bind(modelId, now, chatId)
+      .run();
+  }
+
+  async updateChatTranscriptionModel(chatId: number, modelId: string | null, now: string): Promise<void> {
+    await this.db
+      .prepare(
+        `
+          UPDATE chats
+          SET default_transcription_model = ?, updated_at = ?
+          WHERE chat_id = ?
+        `,
+      )
+      .bind(modelId, now, chatId)
+      .run();
+  }
+
   async getActiveSession(chatId: number): Promise<SessionRow | null> {
     const row = await this.db
       .prepare(
@@ -153,6 +338,10 @@ export class Repo {
             s.title_updated_at,
             s.last_auto_title_message_count,
             s.selected_model,
+            s.compacted_summary,
+            s.compacted_at,
+            s.last_compacted_message_id,
+            s.last_context_warning_at,
             s.created_at,
             s.last_message_at
           FROM chats c
@@ -179,6 +368,10 @@ export class Repo {
             title_updated_at,
             last_auto_title_message_count,
             selected_model,
+            compacted_summary,
+            compacted_at,
+            last_compacted_message_id,
+            last_context_warning_at,
             created_at,
             last_message_at
           FROM sessions
@@ -230,6 +423,40 @@ export class Repo {
       .run();
   }
 
+  async updateSessionCompaction(input: {
+    sessionId: string;
+    compactedSummary: string;
+    compactedAt: string;
+    lastCompactedMessageId: string;
+  }): Promise<void> {
+    await this.db
+      .prepare(
+        `
+          UPDATE sessions
+          SET compacted_summary = ?,
+              compacted_at = ?,
+              last_compacted_message_id = ?,
+              last_context_warning_at = NULL
+          WHERE id = ?
+        `,
+      )
+      .bind(input.compactedSummary, input.compactedAt, input.lastCompactedMessageId, input.sessionId)
+      .run();
+  }
+
+  async updateSessionContextWarning(sessionId: string, warnedAt: string | null): Promise<void> {
+    await this.db
+      .prepare(
+        `
+          UPDATE sessions
+          SET last_context_warning_at = ?
+          WHERE id = ?
+        `,
+      )
+      .bind(warnedAt, sessionId)
+      .run();
+  }
+
   async getMostRecentSession(chatId: number): Promise<SessionRow | null> {
     const row = await this.db
       .prepare(
@@ -243,6 +470,10 @@ export class Repo {
             title_updated_at,
             last_auto_title_message_count,
             selected_model,
+            compacted_summary,
+            compacted_at,
+            last_compacted_message_id,
+            last_context_warning_at,
             created_at,
             last_message_at
           FROM sessions
@@ -307,13 +538,23 @@ export class Repo {
     telegramMessageId: number | null;
     role: MessageRow["role"];
     contentText: string;
+    contentJson?: string | null;
     now: string;
   }): Promise<void> {
     await this.db
       .prepare(
         `
-          INSERT INTO messages (id, session_id, chat_id, telegram_message_id, role, content_text, created_at)
-          VALUES (?, ?, ?, ?, ?, ?, ?)
+          INSERT INTO messages (
+            id,
+            session_id,
+            chat_id,
+            telegram_message_id,
+            role,
+            content_text,
+            content_json,
+            created_at
+          )
+          VALUES (?, ?, ?, ?, ?, ?, ?, ?)
         `,
       )
       .bind(
@@ -323,6 +564,7 @@ export class Repo {
         input.telegramMessageId,
         input.role,
         input.contentText,
+        input.contentJson ?? null,
         input.now,
       )
       .run();
@@ -343,10 +585,10 @@ export class Repo {
     const result = await this.db
       .prepare(
         `
-          SELECT id, session_id, chat_id, telegram_message_id, role, content_text, created_at
+          SELECT id, session_id, chat_id, telegram_message_id, role, content_text, content_json, created_at
           FROM messages
           WHERE session_id = ?
-          ORDER BY created_at DESC
+          ORDER BY created_at DESC, id DESC
           LIMIT ?
         `,
       )
@@ -354,6 +596,22 @@ export class Repo {
       .all<MessageRow>();
 
     return (result.results ?? []).reverse();
+  }
+
+  async getSessionMessages(sessionId: string): Promise<MessageRow[]> {
+    const result = await this.db
+      .prepare(
+        `
+          SELECT id, session_id, chat_id, telegram_message_id, role, content_text, content_json, created_at
+          FROM messages
+          WHERE session_id = ?
+          ORDER BY created_at ASC
+        `,
+      )
+      .bind(sessionId)
+      .all<MessageRow>();
+
+    return result.results ?? [];
   }
 
   async getPendingChatAction(chatId: number): Promise<PendingChatActionRow | null> {
@@ -973,12 +1231,397 @@ export class Repo {
     return row ?? null;
   }
 
+  async listPendingQuestions(runId: string): Promise<PendingQuestionRow[]> {
+    const result = await this.db
+      .prepare(
+        `
+          SELECT
+            id,
+            run_id,
+            tool_call_id,
+            chat_id,
+            question_kind,
+            question_json,
+            created_at
+          FROM pending_questions
+          WHERE run_id = ?
+          ORDER BY created_at ASC
+        `,
+      )
+      .bind(runId)
+      .all<PendingQuestionRow>();
+
+    return result.results ?? [];
+  }
+
   async deletePendingQuestion(id: string): Promise<void> {
     await this.db.prepare(`DELETE FROM pending_questions WHERE id = ?`).bind(id).run();
   }
 
   async deletePendingQuestionsForRun(runId: string): Promise<void> {
     await this.db.prepare(`DELETE FROM pending_questions WHERE run_id = ?`).bind(runId).run();
+  }
+
+  async listSessionsForDashboard(chatId: number, limit = 20): Promise<SessionListItem[]> {
+    const result = await this.db
+      .prepare(
+        `
+          SELECT
+            s.id,
+            s.title,
+            s.title_source,
+            s.selected_model,
+            s.created_at,
+            s.last_message_at,
+            s.compacted_at,
+            s.compacted_summary,
+            CASE WHEN c.active_session_id = s.id THEN 1 ELSE 0 END AS is_active,
+            COALESCE(COUNT(DISTINCT m.id), 0) AS message_count,
+            COALESCE(COUNT(DISTINCT r.id), 0) AS run_count,
+            COALESCE(SUM(CASE WHEN r.status = 'failed' THEN 1 ELSE 0 END), 0) AS failed_run_count,
+            COALESCE(SUM(CASE WHEN r.status = 'completed' THEN r.estimated_cost_usd ELSE 0 END), 0) AS estimated_cost_usd
+          FROM sessions s
+          LEFT JOIN chats c ON c.chat_id = s.chat_id
+          LEFT JOIN messages m ON m.session_id = s.id
+          LEFT JOIN runs r ON r.session_id = s.id
+          WHERE s.chat_id = ?
+          GROUP BY
+            s.id,
+            s.title,
+            s.title_source,
+            s.selected_model,
+            s.created_at,
+            s.last_message_at,
+            s.compacted_at,
+            s.compacted_summary,
+            c.active_session_id
+          ORDER BY s.last_message_at DESC, s.created_at DESC
+          LIMIT ?
+        `,
+      )
+      .bind(chatId, limit)
+      .all<SessionListItem>();
+
+    return (result.results ?? []).map((row) => ({
+      ...row,
+      message_count: Number(row.message_count ?? 0),
+      run_count: Number(row.run_count ?? 0),
+      failed_run_count: Number(row.failed_run_count ?? 0),
+      estimated_cost_usd: Number(row.estimated_cost_usd ?? 0),
+      is_active: Boolean(Number(row.is_active ?? 0)),
+    }));
+  }
+
+  async listRunsForDashboard(input: {
+    chatId: number;
+    limit?: number;
+    status?: RunRow["status"];
+    sessionId?: string;
+  }): Promise<RunListItem[]> {
+    const where = ["s.chat_id = ?"];
+    const bindings: unknown[] = [input.chatId];
+
+    if (input.status) {
+      where.push("r.status = ?");
+      bindings.push(input.status);
+    }
+
+    if (input.sessionId) {
+      where.push("r.session_id = ?");
+      bindings.push(input.sessionId);
+    }
+
+    bindings.push(input.limit ?? 30);
+
+    const result = await this.db
+      .prepare(
+        `
+          SELECT
+            r.id,
+            r.session_id,
+            s.title AS session_title,
+            r.provider,
+            r.model,
+            r.status,
+            r.error,
+            r.input_tokens,
+            r.cached_input_tokens,
+            r.output_tokens,
+            r.estimated_cost_usd,
+            r.created_at,
+            ar.status AS agent_status,
+            ar.last_error AS agent_last_error
+          FROM runs r
+          JOIN sessions s ON s.id = r.session_id
+          LEFT JOIN agent_runs ar ON ar.run_id = r.id
+          WHERE ${where.join(" AND ")}
+          ORDER BY r.created_at DESC
+          LIMIT ?
+        `,
+      )
+      .bind(...bindings)
+      .all<RunListItem>();
+
+    return (result.results ?? []).map((row) => ({
+      ...row,
+      input_tokens: row.input_tokens === null ? null : Number(row.input_tokens),
+      cached_input_tokens: row.cached_input_tokens === null ? null : Number(row.cached_input_tokens),
+      output_tokens: row.output_tokens === null ? null : Number(row.output_tokens),
+      estimated_cost_usd: row.estimated_cost_usd === null ? null : Number(row.estimated_cost_usd),
+    }));
+  }
+
+  async getRun(runId: string): Promise<RunRow | null> {
+    const row = await this.db
+      .prepare(
+        `
+          SELECT
+            id,
+            session_id,
+            update_id,
+            provider,
+            model,
+            status,
+            error,
+            input_tokens,
+            cached_input_tokens,
+            output_tokens,
+            estimated_cost_usd,
+            created_at
+          FROM runs
+          WHERE id = ?
+        `,
+      )
+      .bind(runId)
+      .first<RunRow>();
+
+    if (!row) {
+      return null;
+    }
+
+    return {
+      ...row,
+      input_tokens: row.input_tokens === null ? null : Number(row.input_tokens),
+      cached_input_tokens: row.cached_input_tokens === null ? null : Number(row.cached_input_tokens),
+      output_tokens: row.output_tokens === null ? null : Number(row.output_tokens),
+      estimated_cost_usd: row.estimated_cost_usd === null ? null : Number(row.estimated_cost_usd),
+    };
+  }
+
+  async listToolCallsForRun(runId: string): Promise<ToolCallRow[]> {
+    const result = await this.db
+      .prepare(
+        `
+          SELECT
+            id,
+            run_id,
+            tool_name,
+            status,
+            input_json,
+            output_json,
+            summary_text,
+            display_message_id,
+            error,
+            created_at,
+            updated_at
+          FROM tool_calls
+          WHERE run_id = ?
+          ORDER BY created_at ASC
+        `,
+      )
+      .bind(runId)
+      .all<ToolCallRow>();
+
+    return result.results ?? [];
+  }
+
+  async listRecentToolCallsForSession(sessionId: string, limit = 20): Promise<ToolCallListItem[]> {
+    const result = await this.db
+      .prepare(
+        `
+          SELECT
+            tc.id,
+            tc.run_id,
+            tc.tool_name,
+            tc.status,
+            tc.input_json,
+            tc.output_json,
+            tc.summary_text,
+            tc.display_message_id,
+            tc.error,
+            tc.created_at,
+            tc.updated_at,
+            r.created_at AS run_created_at
+          FROM tool_calls tc
+          JOIN runs r ON r.id = tc.run_id
+          WHERE r.session_id = ?
+          ORDER BY tc.created_at DESC
+          LIMIT ?
+        `,
+      )
+      .bind(sessionId, limit)
+      .all<ToolCallListItem>();
+
+    return result.results ?? [];
+  }
+
+  async listPendingToolApprovalsForChat(chatId: number, limit = 20): Promise<PendingApprovalListItem[]> {
+    const result = await this.db
+      .prepare(
+        `
+          SELECT
+            pta.id,
+            pta.run_id,
+            pta.tool_call_id,
+            pta.chat_id,
+            pta.tool_name,
+            pta.scope_type,
+            pta.scope_value,
+            pta.request_json,
+            pta.created_at,
+            r.session_id,
+            s.title AS session_title,
+            r.created_at AS run_created_at
+          FROM pending_tool_approvals pta
+          JOIN runs r ON r.id = pta.run_id
+          JOIN sessions s ON s.id = r.session_id
+          WHERE pta.chat_id = ?
+          ORDER BY pta.created_at ASC
+          LIMIT ?
+        `,
+      )
+      .bind(chatId, limit)
+      .all<PendingApprovalListItem>();
+
+    return result.results ?? [];
+  }
+
+  async countPendingToolApprovalsForChat(chatId: number): Promise<number> {
+    const row = await this.db
+      .prepare(`SELECT COUNT(*) AS count FROM pending_tool_approvals WHERE chat_id = ?`)
+      .bind(chatId)
+      .first<{ count: number | string }>();
+
+    return Number(row?.count ?? 0);
+  }
+
+  async listPendingQuestionsForChat(chatId: number, limit = 20): Promise<PendingQuestionListItem[]> {
+    const result = await this.db
+      .prepare(
+        `
+          SELECT
+            pq.id,
+            pq.run_id,
+            pq.tool_call_id,
+            pq.chat_id,
+            pq.question_kind,
+            pq.question_json,
+            pq.created_at,
+            r.session_id,
+            s.title AS session_title,
+            r.created_at AS run_created_at
+          FROM pending_questions pq
+          JOIN runs r ON r.id = pq.run_id
+          JOIN sessions s ON s.id = r.session_id
+          WHERE pq.chat_id = ?
+          ORDER BY pq.created_at ASC
+          LIMIT ?
+        `,
+      )
+      .bind(chatId, limit)
+      .all<PendingQuestionListItem>();
+
+    return result.results ?? [];
+  }
+
+  async countPendingQuestionsForChat(chatId: number): Promise<number> {
+    const row = await this.db
+      .prepare(`SELECT COUNT(*) AS count FROM pending_questions WHERE chat_id = ?`)
+      .bind(chatId)
+      .first<{ count: number | string }>();
+
+    return Number(row?.count ?? 0);
+  }
+
+  async listToolPermissionsForChat(chatId: number): Promise<ToolPermissionListItem[]> {
+    const result = await this.db
+      .prepare(
+        `
+          SELECT
+            id,
+            chat_id,
+            tool_name,
+            scope_type,
+            scope_value,
+            decision,
+            created_at,
+            updated_at
+          FROM tool_permissions
+          WHERE chat_id = ?
+          ORDER BY updated_at DESC, created_at DESC
+        `,
+      )
+      .bind(chatId)
+      .all<ToolPermissionListItem>();
+
+    return result.results ?? [];
+  }
+
+  async listMemoriesForDashboard(chatId: number, limit = 50): Promise<MemoryRow[]> {
+    const result = await this.db
+      .prepare(
+        `
+          SELECT
+            id,
+            user_id,
+            chat_id,
+            scope,
+            kind,
+            content_text,
+            status,
+            source_session_id,
+            created_at,
+            updated_at,
+            last_used_at
+          FROM memories
+          WHERE chat_id = ?
+          ORDER BY status ASC, updated_at DESC, created_at DESC
+          LIMIT ?
+        `,
+      )
+      .bind(chatId, limit)
+      .all<MemoryRow>();
+
+    return result.results ?? [];
+  }
+
+  async getDailyUsageSince(since: string): Promise<DailyUsageRow[]> {
+    const result = await this.db
+      .prepare(
+        `
+          SELECT
+            substr(created_at, 1, 10) AS day,
+            COUNT(*) AS run_count,
+            COALESCE(SUM(input_tokens), 0) AS input_tokens,
+            COALESCE(SUM(output_tokens), 0) AS output_tokens,
+            COALESCE(SUM(estimated_cost_usd), 0) AS estimated_cost_usd
+          FROM runs
+          WHERE status = 'completed'
+            AND created_at >= ?
+          GROUP BY day
+          ORDER BY day ASC
+        `,
+      )
+      .bind(since)
+      .all<DailyUsageRow>();
+
+    return (result.results ?? []).map((row) => ({
+      day: row.day,
+      run_count: Number(row.run_count ?? 0),
+      input_tokens: Number(row.input_tokens ?? 0),
+      output_tokens: Number(row.output_tokens ?? 0),
+      estimated_cost_usd: Number(row.estimated_cost_usd ?? 0),
+    }));
   }
 
   async getSessionUsageTotals(sessionId: string): Promise<UsageTotalsRow> {

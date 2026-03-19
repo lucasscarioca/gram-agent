@@ -185,12 +185,16 @@ export async function executeAgentRun(input: {
   }
 }
 
-export function buildInitialRunState(history: MessageRow[]): AgentRunState {
+export function buildInitialRunState(history: Array<MessageRow | ModelMessage>): AgentRunState {
   return {
-    messages: history.map((item) => ({
-      role: item.role,
-      content: item.content_text,
-    })) as ModelMessage[],
+    messages: history.map((item) =>
+      "content_text" in item
+        ? ({
+            role: item.role,
+            content: item.content_text,
+          } as ModelMessage)
+        : item,
+    ) as ModelMessage[],
   };
 }
 
@@ -554,7 +558,6 @@ function createAgentTools(input: {
           session.chat_id,
           renderTelegramHtml(formatQuestionPrompt(state)),
           {
-            replyToMessageId: options.messages.length === 0 ? undefined : undefined,
             inlineKeyboard: buildQuestionKeyboard(state),
           },
         );

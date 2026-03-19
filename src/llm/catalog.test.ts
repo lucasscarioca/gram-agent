@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { estimateCostUsd, getModelSpec, parseQualifiedModelId } from "./catalog";
+import { estimateCostUsd, getContextWindowTokens, getModelSpec, parseQualifiedModelId } from "./catalog";
 
 describe("catalog", () => {
   it("parses qualified model ids", () => {
@@ -26,5 +26,10 @@ describe("catalog", () => {
         outputTokens: 500_000,
       }),
     ).toBe(6.025);
+  });
+
+  it("resolves context windows with fallback support", () => {
+    expect(getContextWindowTokens("openai:gpt-5.1", 290_000)).toBe(400_000);
+    expect(getContextWindowTokens("openai:not-real", 290_000)).toBe(290_000);
   });
 });

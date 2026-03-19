@@ -1,4 +1,4 @@
-import type { TelegramApiResponse, TelegramMessage } from "../types";
+import type { TelegramApiResponse, TelegramFile, TelegramMessage } from "../types";
 
 export interface InlineKeyboardButton {
   text: string;
@@ -17,9 +17,11 @@ export interface SendMessageOptions {
 
 export class TelegramClient {
   private readonly baseUrl: string;
+  private readonly fileBaseUrl: string;
 
   constructor(botToken: string) {
     this.baseUrl = `https://api.telegram.org/bot${botToken}`;
+    this.fileBaseUrl = `https://api.telegram.org/file/bot${botToken}`;
   }
 
   async sendChatAction(chatId: number, action: "typing"): Promise<void> {
@@ -95,6 +97,27 @@ export class TelegramClient {
       message_id: messageId,
       reply_markup: { inline_keyboard: inlineKeyboard },
     });
+  }
+
+  async getFile(fileId: string): Promise<TelegramFile> {
+    const response = await this.call<TelegramFile>("getFile", {
+      file_id: fileId,
+    });
+
+    return response.result;
+  }
+
+  async downloadFile(filePath: string): Promise<{ data: Uint8Array; mediaType?: string }> {
+    const response = await fetch(`${this.fileBaseUrl}/${filePath}`);
+
+    if (!response.ok) {
+      throw new Error(`Telegram file download failed with ${response.status}`);
+    }
+
+    return {
+      data: new Uint8Array(await response.arrayBuffer()),
+      mediaType: response.headers.get("content-type") ?? undefined,
+    };
   }
 
   private async call<T>(method: string, body: Record<string, unknown>): Promise<TelegramApiResponse<T>> {

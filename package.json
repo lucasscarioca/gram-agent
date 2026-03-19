@@ -1,10 +1,15 @@
 {
 	"name": "gram",
+	"version": "0.9.0",
 	"description": "Minimal starter for personal Telegram agents on Cloudflare Workers",
+	"packageManager": "pnpm@10.28.0",
 	"type": "module",
 	"scripts": {
 		"dev": "wrangler dev",
-		"deploy": "pnpm run db:migrate:remote && wrangler deploy --minify",
+		"dev:admin": "vite --config vite.config.ts",
+		"build:admin": "vite build --config vite.config.ts",
+		"build": "pnpm run build:admin",
+		"deploy": "pnpm run build:admin && pnpm run db:migrate:remote && wrangler deploy --minify",
 		"cf-typegen": "wrangler types --env-interface CloudflareBindings",
 		"db:setup:local": "wrangler d1 execute DB --local --file=db/schema.sql && pnpm run db:stamp:local",
 		"db:setup:remote": "wrangler d1 execute DB --remote --file=db/schema.sql && pnpm run db:stamp:remote",
@@ -15,20 +20,41 @@
 		"db:migrate:local": "pnpm run db:doctor:local && wrangler d1 migrations apply DB --local",
 		"db:migrate:remote": "pnpm run db:doctor:remote && wrangler d1 migrations apply DB --remote",
 		"typecheck": "tsc --noEmit",
-		"test": "vitest run"
+		"preview:admin": "vite preview --config vite.config.ts",
+		"test": "vitest run",
+		"test:coverage": "vitest run --coverage"
 	},
 	"dependencies": {
 		"@ai-sdk/anthropic": "^3.0.58",
 		"@ai-sdk/google": "^3.0.43",
 		"@ai-sdk/openai": "^3.0.41",
 		"@ai-sdk/openai-compatible": "^2.0.35",
+		"@radix-ui/react-dialog": "^1.1.15",
+		"@radix-ui/react-scroll-area": "^1.2.10",
+		"@radix-ui/react-separator": "^1.1.8",
+		"@radix-ui/react-slot": "^1.2.4",
+		"@radix-ui/react-tabs": "^1.1.13",
 		"ai": "^6.0.116",
+		"class-variance-authority": "^0.7.1",
+		"clsx": "^2.1.1",
 		"hono": "^4.12.5",
+		"jose": "^6.2.1",
+		"lucide-react": "^0.577.0",
+		"react": "^19.2.4",
+		"react-dom": "^19.2.4",
+		"tailwind-merge": "^3.5.0",
 		"zod": "^4.3.6"
 	},
 	"devDependencies": {
+		"@tailwindcss/vite": "^4.2.1",
 		"@types/node": "^25.4.0",
+		"@types/react": "^19.2.14",
+		"@types/react-dom": "^19.2.3",
+		"@vitejs/plugin-react": "^5.1.0",
+		"@vitest/coverage-v8": "4.0.18",
+		"tailwindcss": "^4.2.1",
 		"typescript": "^5.9.3",
+		"vite": "^7.1.12",
 		"vitest": "^4.0.18",
 		"wrangler": "^4.71.0"
 	},
@@ -69,6 +95,18 @@
 			},
 			"EXA_API_KEY": {
 				"description": "Exa API key used for the web_search tool."
+			},
+			"ADMIN_ENABLED": {
+				"description": "Set to 1 to expose the optional admin dashboard routes and Telegram /dashboard shortcut once the rest of the admin config is present."
+			},
+			"ADMIN_BASE_URL": {
+				"description": "Full admin dashboard URL. Example: https://gram.example.com/admin"
+			},
+			"TEAM_DOMAIN": {
+				"description": "Cloudflare Access team domain. Example: https://your-team.cloudflareaccess.com"
+			},
+			"POLICY_AUD": {
+				"description": "Cloudflare Access application audience tag for the /admin policy."
 			}
 		}
 	}

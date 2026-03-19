@@ -14,6 +14,10 @@ export class OpenAiLlmProvider implements LlmProvider {
     return this.openai(model);
   }
 
+  getTranscriptionModel(model: string) {
+    return this.openai.transcription(model);
+  }
+
   async respond(input: {
     system: string;
     history: Array<{ role: "system" | "user" | "assistant"; content: string }>;

@@ -1,9 +1,28 @@
 import { z } from "zod";
 
-import { BUILTIN_MODEL_IDS, getModelSpec, type QualifiedModelId } from "./llm/catalog";
+import {
+  BUILTIN_MODEL_IDS,
+  BUILTIN_TRANSCRIPTION_MODEL_IDS,
+  getModelSpec,
+  getTranscriptionModelSpec,
+  type QualifiedModelId,
+  type QualifiedTranscriptionModelId,
+} from "./llm/catalog";
 import type { EnvBindings } from "./types";
 
 const DEFAULT_MODEL = "google:gemini-2.5-flash";
+const DEFAULT_CONTEXT_WINDOW_TOKENS = 290_000;
+const DEFAULT_CONTEXT_RESERVE_TOKENS = 24_000;
+const DEFAULT_CONTEXT_WARN_THRESHOLD = 0.72;
+const DEFAULT_CONTEXT_COMPACT_THRESHOLD = 0.86;
+
+function parseBooleanFlag(value: string | undefined, fallback: boolean): boolean {
+  if (!value) {
+    return fallback;
+  }
+
+  return value === "1" || value === "true";
+}
 
 const envSchema = z.object({
   TELEGRAM_BOT_TOKEN: z.string().min(1),
@@ -27,16 +46,15 @@ const envSchema = z.object({
   MAX_WEB_SEARCHES_PER_RUN: z.coerce.number().int().positive().optional(),
   MAX_WEB_FETCHES_PER_RUN: z.coerce.number().int().positive().optional(),
   MAX_WEB_FETCH_BYTES: z.coerce.number().int().positive().optional(),
-  SHOW_TOOL_STATUS_MESSAGES: z
-    .enum(["0", "1", "false", "true"])
-    .optional()
-    .transform((value) => {
-      if (!value) {
-        return true;
-      }
-
-      return value === "1" || value === "true";
-    }),
+  DEFAULT_CONTEXT_WINDOW_TOKENS: z.coerce.number().int().positive().optional(),
+  CONTEXT_RESERVE_TOKENS: z.coerce.number().int().positive().optional(),
+  CONTEXT_WARN_THRESHOLD: z.coerce.number().positive().max(1).optional(),
+  CONTEXT_COMPACT_THRESHOLD: z.coerce.number().positive().max(1).optional(),
+  SHOW_TOOL_STATUS_MESSAGES: z.enum(["0", "1", "false", "true"]).optional(),
+  ADMIN_ENABLED: z.enum(["0", "1", "false", "true"]).optional(),
+  ADMIN_BASE_URL: z.string().url().optional(),
+  TEAM_DOMAIN: z.string().url().optional(),
+  POLICY_AUD: z.string().min(1).optional(),
 });
 
 export interface AppConfig {
@@ -50,12 +68,21 @@ export interface AppConfig {
   openRouterApiKey?: string;
   exaApiKey?: string;
   allowedModels: QualifiedModelId[];
+  allowedTranscriptionModels: QualifiedTranscriptionModelId[];
   defaultModel: QualifiedModelId;
   maxToolCallsPerRun: number;
   maxWebSearchesPerRun: number;
   maxWebFetchesPerRun: number;
   maxWebFetchBytes: number;
+  defaultContextWindowTokens: number;
+  contextReserveTokens: number;
+  contextWarnThreshold: number;
+  contextCompactThreshold: number;
   showToolStatusMessages: boolean;
+  adminEnabled: boolean;
+  adminBaseUrl?: string;
+  teamDomain?: string;
+  policyAud?: string;
 }
 
 export function getConfig(env: EnvBindings): AppConfig {
@@ -85,6 +112,10 @@ export function getConfig(env: EnvBindings): AppConfig {
   const allowedModels = knownModels
     .filter((model) => availableProviders[model.provider])
     .map((model) => model.id);
+  const allowedTranscriptionModels = BUILTIN_TRANSCRIPTION_MODEL_IDS.filter((modelId) => {
+    const spec = getTranscriptionModelSpec(modelId);
+    return spec ? availableProviders[spec.provider] : false;
+  });
 
   if (allowedModels.length === 0) {
     throw new Error("No allowed models remain after filtering unconfigured providers");
@@ -100,6 +131,12 @@ export function getConfig(env: EnvBindings): AppConfig {
   const defaultModel = allowedModels.includes(defaultSpec.id)
     ? defaultSpec.id
     : (allowedModels[0] ?? DEFAULT_MODEL);
+  const contextWarnThreshold = parsed.CONTEXT_WARN_THRESHOLD ?? DEFAULT_CONTEXT_WARN_THRESHOLD;
+  const contextCompactThreshold = parsed.CONTEXT_COMPACT_THRESHOLD ?? DEFAULT_CONTEXT_COMPACT_THRESHOLD;
+
+  if (contextCompactThreshold <= contextWarnThreshold) {
+    throw new Error("CONTEXT_COMPACT_THRESHOLD must be greater than CONTEXT_WARN_THRESHOLD");
+  }
 
   return {
     telegramBotToken: parsed.TELEGRAM_BOT_TOKEN,
@@ -115,11 +152,20 @@ export function getConfig(env: EnvBindings): AppConfig {
     openRouterApiKey: parsed.OPENROUTER_API_KEY,
     exaApiKey: parsed.EXA_API_KEY,
     allowedModels,
+    allowedTranscriptionModels,
     defaultModel,
     maxToolCallsPerRun: parsed.MAX_TOOL_CALLS_PER_RUN ?? 8,
     maxWebSearchesPerRun: parsed.MAX_WEB_SEARCHES_PER_RUN ?? 2,
     maxWebFetchesPerRun: parsed.MAX_WEB_FETCHES_PER_RUN ?? 4,
     maxWebFetchBytes: parsed.MAX_WEB_FETCH_BYTES ?? 250_000,
-    showToolStatusMessages: parsed.SHOW_TOOL_STATUS_MESSAGES,
+    defaultContextWindowTokens: parsed.DEFAULT_CONTEXT_WINDOW_TOKENS ?? DEFAULT_CONTEXT_WINDOW_TOKENS,
+    contextReserveTokens: parsed.CONTEXT_RESERVE_TOKENS ?? DEFAULT_CONTEXT_RESERVE_TOKENS,
+    contextWarnThreshold,
+    contextCompactThreshold,
+    showToolStatusMessages: parseBooleanFlag(parsed.SHOW_TOOL_STATUS_MESSAGES, true),
+    adminEnabled: parseBooleanFlag(parsed.ADMIN_ENABLED, false),
+    adminBaseUrl: parsed.ADMIN_BASE_URL,
+    teamDomain: parsed.TEAM_DOMAIN,
+    policyAud: parsed.POLICY_AUD,
   };
 }

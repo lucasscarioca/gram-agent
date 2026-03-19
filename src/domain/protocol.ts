@@ -1,4 +1,20 @@
-const COMMANDS = new Set(["help", "new", "list", "model", "rename", "delete", "cancel", "status", "analytics"]);
+const COMMANDS = new Set([
+  "help",
+  "new",
+  "list",
+  "model",
+  "rename",
+  "delete",
+  "cancel",
+  "status",
+  "analytics",
+  "compact",
+  "remember",
+  "memories",
+  "forget",
+  "settings",
+  "dashboard",
+]);
 
 export type SupportedCommand =
   | "help"
@@ -9,7 +25,13 @@ export type SupportedCommand =
   | "delete"
   | "cancel"
   | "status"
-  | "analytics";
+  | "analytics"
+  | "compact"
+  | "remember"
+  | "memories"
+  | "forget"
+  | "settings"
+  | "dashboard";
 
 export type CallbackAction =
   | { kind: "command"; command: Exclude<SupportedCommand, "help" | "rename" | "delete" | "cancel" | "status" | "analytics"> }
@@ -20,11 +42,19 @@ export type CallbackAction =
   | { kind: "session_delete_confirm"; sessionId: string }
   | { kind: "session_delete_cancel"; sessionId: string }
   | { kind: "model"; modelId: string }
+  | { kind: "settings" }
+  | { kind: "settings_vision" }
+  | { kind: "settings_transcription" }
+  | { kind: "settings_vision_set"; modelId: string }
+  | { kind: "settings_vision_clear" }
+  | { kind: "settings_transcription_set"; modelId: string }
+  | { kind: "settings_transcription_clear" }
   | { kind: "tool_permission"; decision: "deny" | "once" | "always"; approvalId: string }
   | { kind: "question_select"; questionId: string; optionIndex: number }
   | { kind: "question_toggle"; questionId: string; optionIndex: number }
   | { kind: "question_submit"; questionId: string }
-  | { kind: "question_cancel"; questionId: string };
+  | { kind: "question_cancel"; questionId: string }
+  | { kind: "memory_forget"; memoryId: string };
 
 export function parseCommand(text: string): SupportedCommand | null {
   if (!text.startsWith("/")) {
@@ -49,7 +79,7 @@ export function parseCallbackAction(data: string | undefined): CallbackAction | 
   if (data.startsWith("command:")) {
     const command = data.slice("command:".length);
 
-    if (command === "new" || command === "list" || command === "model") {
+    if (command === "new" || command === "list" || command === "model" || command === "settings") {
       return { kind: "command", command };
     }
 
@@ -91,6 +121,36 @@ export function parseCallbackAction(data: string | undefined): CallbackAction | 
     return modelId ? { kind: "model", modelId } : null;
   }
 
+  if (data === "settings") {
+    return { kind: "settings" };
+  }
+
+  if (data === "settings_vision") {
+    return { kind: "settings_vision" };
+  }
+
+  if (data === "settings_transcription") {
+    return { kind: "settings_transcription" };
+  }
+
+  if (data.startsWith("settings_vision_set:")) {
+    const modelId = data.slice("settings_vision_set:".length);
+    return modelId ? { kind: "settings_vision_set", modelId } : null;
+  }
+
+  if (data === "settings_vision_clear") {
+    return { kind: "settings_vision_clear" };
+  }
+
+  if (data.startsWith("settings_transcription_set:")) {
+    const modelId = data.slice("settings_transcription_set:".length);
+    return modelId ? { kind: "settings_transcription_set", modelId } : null;
+  }
+
+  if (data === "settings_transcription_clear") {
+    return { kind: "settings_transcription_clear" };
+  }
+
   if (data.startsWith("tpd:")) {
     const approvalId = data.slice("tpd:".length);
     return approvalId ? { kind: "tool_permission", decision: "deny", approvalId } : null;
@@ -128,6 +188,11 @@ export function parseCallbackAction(data: string | undefined): CallbackAction | 
   if (data.startsWith("qcan:")) {
     const questionId = data.slice("qcan:".length);
     return questionId ? { kind: "question_cancel", questionId } : null;
+  }
+
+  if (data.startsWith("mforget:")) {
+    const memoryId = data.slice("mforget:".length);
+    return memoryId ? { kind: "memory_forget", memoryId } : null;
   }
 
   return null;

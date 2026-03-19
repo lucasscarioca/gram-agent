@@ -1,5 +1,11 @@
 import { AnthropicLlmProvider } from "./anthropic";
-import { getModelSpec, type ProviderId, type QualifiedModelId } from "./catalog";
+import {
+  getModelSpec,
+  getTranscriptionModelSpec,
+  type ProviderId,
+  type QualifiedModelId,
+  type QualifiedTranscriptionModelId,
+} from "./catalog";
 import { GoogleLlmProvider } from "./google";
 import { OpenAiLlmProvider } from "./openai";
 import { OpenRouterLlmProvider } from "./openrouter";
@@ -47,6 +53,22 @@ export class LlmRegistry {
     }
 
     return client.getModel(spec.modelId);
+  }
+
+  getTranscriptionModel(model: QualifiedTranscriptionModelId) {
+    const spec = getTranscriptionModelSpec(model);
+
+    if (!spec) {
+      throw new Error(`Unsupported transcription model: ${model}`);
+    }
+
+    const client = this.getClient(spec.provider);
+
+    if (!client?.getTranscriptionModel) {
+      throw new Error(`Transcription provider not configured: ${spec.provider}`);
+    }
+
+    return client.getTranscriptionModel(spec.modelId);
   }
 
   async respond(input: {

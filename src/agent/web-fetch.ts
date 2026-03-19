@@ -4,9 +4,13 @@ const PRIVATE_HOST_PATTERNS = [
   /^localhost$/i,
   /^127\./,
   /^10\./,
+  /^172\.(1[6-9]|2\d|3[0-1])\./,
   /^192\.168\./,
   /^169\.254\./,
   /^0\./,
+  /^fc[0-9a-f]{2}:/i,
+  /^fd[0-9a-f]{2}:/i,
+  /^fe80:/i,
 ];
 
 export function normalizePermissionScopeFromUrl(value: string): string {

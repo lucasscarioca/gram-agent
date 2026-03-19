@@ -1,4 +1,4 @@
-import type { LanguageModel, LanguageModelUsage } from "ai";
+import type { LanguageModel, LanguageModelUsage, TranscriptionModel } from "ai";
 
 export interface LlmHistoryItem {
   role: "system" | "user" | "assistant";
@@ -13,6 +13,7 @@ export function getCachedInputTokens(usage?: LlmUsage): number | undefined {
 
 export interface LlmProvider {
   getModel(model: string): LanguageModel;
+  getTranscriptionModel?(model: string): TranscriptionModel;
   respond(input: {
     system: string;
     history: LlmHistoryItem[];
