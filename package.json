@@ -1,6 +1,6 @@
 {
 	"name": "gram",
-	"version": "0.9.0",
+	"version": "1.0.0",
 	"description": "Minimal starter for personal Telegram agents on Cloudflare Workers",
 	"packageManager": "pnpm@10.28.0",
 	"type": "module",

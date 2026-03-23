@@ -2,6 +2,10 @@
 
 ## Unreleased
 
+Nothing yet.
+
+## v1.0.0
+
 Adds:
 
 - retry-safe Telegram webhook failure responses so transient processing errors return `500` instead of silently acknowledging dropped updates
