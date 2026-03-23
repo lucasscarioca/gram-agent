@@ -125,4 +125,14 @@ describe("getConfig", () => {
     expect(config.teamDomain).toBe("https://team.cloudflareaccess.com");
     expect(config.policyAud).toBe("aud-tag");
   });
+
+  it("fails for invalid ALLOWED_CHAT_ID values", () => {
+    expect(() =>
+      getConfig(
+        createEnv({
+          ALLOWED_CHAT_ID: "abc",
+        }),
+      ),
+    ).toThrow();
+  });
 });

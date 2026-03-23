@@ -28,13 +28,14 @@ const envSchema = z.object({
   TELEGRAM_BOT_TOKEN: z.string().min(1),
   TELEGRAM_WEBHOOK_SECRET: z.string().min(1),
   ALLOWED_TELEGRAM_USER_ID: z.coerce.number().int().positive(),
-  ALLOWED_CHAT_ID: z.string().optional().transform((value) => {
-    if (!value || value.trim().length === 0) {
-      return undefined;
+  ALLOWED_CHAT_ID: z.preprocess((value) => {
+    if (typeof value !== "string") {
+      return value;
     }
 
-    return Number(value);
-  }),
+    const trimmed = value.trim();
+    return trimmed.length === 0 ? undefined : trimmed;
+  }, z.coerce.number().int().optional()),
   GOOGLE_GENERATIVE_AI_API_KEY: z.string().min(1).optional(),
   OPENAI_API_KEY: z.string().min(1).optional(),
   ANTHROPIC_API_KEY: z.string().min(1).optional(),
@@ -142,10 +143,7 @@ export function getConfig(env: EnvBindings): AppConfig {
     telegramBotToken: parsed.TELEGRAM_BOT_TOKEN,
     telegramWebhookSecret: parsed.TELEGRAM_WEBHOOK_SECRET,
     allowedTelegramUserId: parsed.ALLOWED_TELEGRAM_USER_ID,
-    allowedChatId:
-      typeof parsed.ALLOWED_CHAT_ID === "number" && Number.isFinite(parsed.ALLOWED_CHAT_ID)
-        ? parsed.ALLOWED_CHAT_ID
-        : undefined,
+    allowedChatId: parsed.ALLOWED_CHAT_ID,
     googleApiKey: parsed.GOOGLE_GENERATIVE_AI_API_KEY,
     openAiApiKey: parsed.OPENAI_API_KEY,
     anthropicApiKey: parsed.ANTHROPIC_API_KEY,

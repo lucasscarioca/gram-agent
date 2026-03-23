@@ -96,6 +96,34 @@ describe("webhook app", () => {
     vi.clearAllMocks();
   });
 
+  it("returns 500 when update processing fails so Telegram can retry", async () => {
+    repoMock.ensureChat.mockRejectedValueOnce(new Error("db down"));
+
+    const response = await app.request(
+      "/webhooks/telegram/secret",
+      {
+        method: "POST",
+        headers: {
+          "content-type": "application/json",
+          "x-telegram-bot-api-secret-token": "secret",
+        },
+        body: JSON.stringify({
+          update_id: 1,
+          message: {
+            message_id: 10,
+            from: { id: 1 },
+            chat: { id: 1, type: "private" },
+            text: "/help",
+          },
+        }),
+      },
+      createEnv(),
+    );
+
+    expect(response.status).toBe(500);
+    await expect(response.json()).resolves.toEqual({ ok: false });
+  });
+
   it("rejects wrong webhook secrets", async () => {
     const response = await app.request(
       "/webhooks/telegram/wrong",

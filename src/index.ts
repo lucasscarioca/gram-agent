@@ -183,35 +183,35 @@ app.get("/healthz", (c) => c.json({ ok: true }));
 
 app.post("/webhooks/telegram/:secret", async (c) => {
   const env = c.env;
-  const config = getConfig(env);
-  const secret = c.req.param("secret");
-  const headerSecret = c.req.header("x-telegram-bot-api-secret-token");
-
-  if (secret !== config.telegramWebhookSecret) {
-    return c.text("not found", 404);
-  }
-
-  if (headerSecret !== config.telegramWebhookSecret) {
-    return c.text("forbidden", 403);
-  }
-
-  const update = (await c.req.json()) as TelegramUpdate;
-  const repo = new Repo(env.DB);
-  const telegram = new TelegramClient(config.telegramBotToken);
-  const llm = LlmRegistry.fromConfig({
-    googleApiKey: config.googleApiKey,
-    openAiApiKey: config.openAiApiKey,
-    anthropicApiKey: config.anthropicApiKey,
-    openRouterApiKey: config.openRouterApiKey,
-  });
-
   try {
+    const config = getConfig(env);
+    const secret = c.req.param("secret");
+    const headerSecret = c.req.header("x-telegram-bot-api-secret-token");
+
+    if (secret !== config.telegramWebhookSecret) {
+      return c.text("not found", 404);
+    }
+
+    if (headerSecret !== config.telegramWebhookSecret) {
+      return c.text("forbidden", 403);
+    }
+
+    const update = (await c.req.json()) as TelegramUpdate;
+    const repo = new Repo(env.DB);
+    const telegram = new TelegramClient(config.telegramBotToken);
+    const llm = LlmRegistry.fromConfig({
+      googleApiKey: config.googleApiKey,
+      openAiApiKey: config.openAiApiKey,
+      anthropicApiKey: config.anthropicApiKey,
+      openRouterApiKey: config.openRouterApiKey,
+    });
+
     await ensureTelegramUi(telegram, config);
     await handleUpdate({ update, config, repo, telegram, llm });
     return c.json({ ok: true });
   } catch (error) {
     console.error("update handling failed", error);
-    return c.json({ ok: true });
+    return c.json({ ok: false }, 500);
   }
 });
 

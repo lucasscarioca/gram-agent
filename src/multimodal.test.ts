@@ -57,6 +57,22 @@ function createVoiceMessage(): TelegramMessage {
   };
 }
 
+function createPhotoMessage(): TelegramMessage {
+  return {
+    message_id: 2,
+    chat: { id: 1, type: "private" },
+    photo: [
+      {
+        file_id: "photo-file",
+        file_unique_id: "photo-unique",
+        width: 320,
+        height: 240,
+        file_size: 128,
+      },
+    ],
+  };
+}
+
 describe("prepareTelegramUserInput audio", () => {
   it("uses Gemini file prompts for audio transcription", async () => {
     vi.mocked(generateText).mockResolvedValue({ text: "hello from audio" } as Awaited<ReturnType<typeof generateText>>);
@@ -115,6 +131,36 @@ describe("prepareTelegramUserInput audio", () => {
         "hello from audio",
       ].join("\n\n"),
       contentJson: expect.any(String),
+    });
+  });
+
+  it("rejects audio when transcription is not configured", async () => {
+    const result = await prepareTelegramUserInput({
+      message: createVoiceMessage(),
+      session: createSession(),
+      chat: createChat({ default_transcription_model: null }),
+      telegram: {} as never,
+      llm: {} as never,
+    });
+
+    expect(result).toEqual({
+      errorMessage: "Audio transcription not enabled. Configure a default transcription model in /settings or the admin dashboard.",
+    });
+  });
+});
+
+describe("prepareTelegramUserInput image", () => {
+  it("rejects images when no vision model is available", async () => {
+    const result = await prepareTelegramUserInput({
+      message: createPhotoMessage(),
+      session: createSession({ selected_model: "openrouter:minimax/minimax-m2.5" }),
+      chat: createChat({ default_vision_model: null }),
+      telegram: {} as never,
+      llm: {} as never,
+    });
+
+    expect(result).toEqual({
+      errorMessage: "Vision not enabled. Configure a default vision model in /settings or the admin dashboard.",
     });
   });
 });

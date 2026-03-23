@@ -1,5 +1,13 @@
 # Changelog
 
+## Unreleased
+
+Adds:
+
+- retry-safe Telegram webhook failure responses so transient processing errors return `500` instead of silently acknowledging dropped updates
+- strict `ALLOWED_CHAT_ID` validation so bad config fails fast instead of disabling the extra chat guard
+- focused tests for Cloudflare Access JWT verification, provider registry wiring, multimodal guardrails, and webhook retry behavior
+
 ## v0.9.0
 
 Adds:
