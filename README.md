@@ -23,6 +23,26 @@ Telegram-first personal agent starter for Cloudflare Workers.
 - optional private admin dashboard at `/admin`
 - Cloudflare Access-ready admin protection and custom-domain WAF guidance for the Telegram webhook
 
+## Quick Look
+
+![Telegram main chat](docs/screenshots/01-telegram-main-chat.png)
+
+Browse sessions, respond in Telegram, and keep the bot as the primary interface.
+
+| Multimodal image | Memory flow |
+| --- | --- |
+| ![Multimodal image](docs/screenshots/02-multimodal-image.png) | ![Memory flow](docs/screenshots/03-memory-flow.png) |
+| Send an image and have it interpreted before it reaches the model. | Save long-lived notes with `/remember`, then review them with `/memories`. |
+
+| Pending approval | Admin overview |
+| --- | --- |
+| ![Pending approval](docs/screenshots/04-pending-approval.png) | ![Admin overview](docs/screenshots/05-admin-overview.png) |
+| Keep tool approvals and follow-up questions visible inside Telegram. | Inspect sessions, runs, pending work, and memory in the private dashboard. |
+
+![Admin memory ledger](docs/screenshots/06-admin-memory-ledger.png)
+
+Review long-lived notes and saved permissions in the private dashboard.
+
 ## Commands
 
 - `/help`
