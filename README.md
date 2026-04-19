@@ -33,7 +33,7 @@ A compact tour of the main workflows.
 
 | Pending approval | Admin overview | Admin memory ledger |
 | --- | --- | --- |
-| <img src="docs/screenshots/04-pending-approval.png" alt="Pending approval" width="220" /><br/>Keep tool approvals and follow-up questions visible inside Telegram. | <img src="docs/screenshots/05-admin-overview.png" alt="Admin overview" width="220" /><br/>Inspect sessions, runs, pending work, and memory in the private dashboard. | <img src="docs/screenshots/06-admin-memory-ledger.png" alt="Admin memory ledger" width="220" /><br/>Review long-lived notes and saved permissions in the private dashboard. |
+| <img src="docs/screenshots/04-pending-approval.png" alt="Pending approval" width="220" /><br/>Keep tool approvals and follow-up questions visible inside Telegram. | <img src="docs/screenshots/05-admin-overview.png" alt="Admin overview" width="220" /><br/>Inspect sessions, runs, pending work, and memory in the private dashboard. | <img src="docs/screenshots/06-menu-options.png" alt="Menu options" width="220" /><br/>Explore the full command menu, including session, memory, settings, and dashboard actions. |
 
 ## Commands
 
