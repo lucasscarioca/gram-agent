@@ -25,21 +25,25 @@ Telegram-first personal agent starter for Cloudflare Workers.
 
 ## Quick Look
 
-![Telegram main chat](docs/screenshots/01-telegram-main-chat.png)
+<p align="center">
+  <img src="docs/screenshots/01-telegram-main-chat.png" alt="Telegram main chat" width="300" />
+</p>
 
 Browse sessions, respond in Telegram, and keep the bot as the primary interface.
 
 | Multimodal image | Memory flow |
 | --- | --- |
-| ![Multimodal image](docs/screenshots/02-multimodal-image.png) | ![Memory flow](docs/screenshots/03-memory-flow.png) |
+| <img src="docs/screenshots/02-multimodal-image.png" alt="Multimodal image" width="260" /> | <img src="docs/screenshots/03-memory-flow.png" alt="Memory flow" width="260" /> |
 | Send an image and have it interpreted before it reaches the model. | Save long-lived notes with `/remember`, then review them with `/memories`. |
 
 | Pending approval | Admin overview |
 | --- | --- |
-| ![Pending approval](docs/screenshots/04-pending-approval.png) | ![Admin overview](docs/screenshots/05-admin-overview.png) |
+| <img src="docs/screenshots/04-pending-approval.png" alt="Pending approval" width="260" /> | <img src="docs/screenshots/05-admin-overview.png" alt="Admin overview" width="260" /> |
 | Keep tool approvals and follow-up questions visible inside Telegram. | Inspect sessions, runs, pending work, and memory in the private dashboard. |
 
-![Admin memory ledger](docs/screenshots/06-admin-memory-ledger.png)
+<p align="center">
+  <img src="docs/screenshots/06-admin-memory-ledger.png" alt="Admin memory ledger" width="300" />
+</p>
 
 Review long-lived notes and saved permissions in the private dashboard.
 
