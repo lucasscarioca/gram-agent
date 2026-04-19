@@ -25,27 +25,15 @@ Telegram-first personal agent starter for Cloudflare Workers.
 
 ## Quick Look
 
-<p align="center">
-  <img src="docs/screenshots/01-telegram-main-chat.png" alt="Telegram main chat" width="300" />
-</p>
+A compact tour of the main workflows.
 
-Browse sessions, respond in Telegram, and keep the bot as the primary interface.
+| Telegram main chat | Multimodal image | Memory flow |
+| --- | --- | --- |
+| <img src="docs/screenshots/01-telegram-main-chat.png" alt="Telegram main chat" width="220" /><br/>Browse sessions, respond in Telegram, and keep the bot as the primary interface. | <img src="docs/screenshots/02-multimodal-image.png" alt="Multimodal image" width="220" /><br/>Send an image and have it interpreted before it reaches the model. | <img src="docs/screenshots/03-memory-flow.png" alt="Memory flow" width="220" /><br/>Save long-lived notes with `/remember`, then review them with `/memories`. |
 
-| Multimodal image | Memory flow |
-| --- | --- |
-| <img src="docs/screenshots/02-multimodal-image.png" alt="Multimodal image" width="260" /> | <img src="docs/screenshots/03-memory-flow.png" alt="Memory flow" width="260" /> |
-| Send an image and have it interpreted before it reaches the model. | Save long-lived notes with `/remember`, then review them with `/memories`. |
-
-| Pending approval | Admin overview |
-| --- | --- |
-| <img src="docs/screenshots/04-pending-approval.png" alt="Pending approval" width="260" /> | <img src="docs/screenshots/05-admin-overview.png" alt="Admin overview" width="260" /> |
-| Keep tool approvals and follow-up questions visible inside Telegram. | Inspect sessions, runs, pending work, and memory in the private dashboard. |
-
-<p align="center">
-  <img src="docs/screenshots/06-admin-memory-ledger.png" alt="Admin memory ledger" width="300" />
-</p>
-
-Review long-lived notes and saved permissions in the private dashboard.
+| Pending approval | Admin overview | Admin memory ledger |
+| --- | --- | --- |
+| <img src="docs/screenshots/04-pending-approval.png" alt="Pending approval" width="220" /><br/>Keep tool approvals and follow-up questions visible inside Telegram. | <img src="docs/screenshots/05-admin-overview.png" alt="Admin overview" width="220" /><br/>Inspect sessions, runs, pending work, and memory in the private dashboard. | <img src="docs/screenshots/06-admin-memory-ledger.png" alt="Admin memory ledger" width="220" /><br/>Review long-lived notes and saved permissions in the private dashboard. |
 
 ## Commands
 
